@@ -646,10 +646,12 @@ export default function ContactsPage() {
       onDrop={handleDrop}
     >
       <header className="shrink-0 z-20 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 shadow-sm">
-        <div className="px-4 md:px-6 py-3 flex items-center justify-between gap-4">
-          <AdbStatusBadge />
-          <div className="flex-grow p-2 border rounded-lg border-border">
-            <Ribbon
+        <div className="px-2 md:px-6 py-2 md:py-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 md:gap-4">
+          <div className="mb-2 sm:mb-0">
+            <AdbStatusBadge />
+          </div>
+          <div className="flex-grow w-full p-2 border rounded-lg border-border overflow-hidden">
+            <Ribbon 
               ref={ribbonRef}
               selectedContactEmail={activeContact?.email}
               inputFileRef={inputFileRef as React.RefObject<HTMLInputElement>}
@@ -670,7 +672,7 @@ export default function ContactsPage() {
             variant="outline" 
             size="icon" 
             onClick={togglePanel}
-            className="h-9 w-9 rounded-full shadow-md bg-background hover:bg-muted shrink-0"
+            className="h-9 w-9 rounded-full shadow-md bg-background hover:bg-muted shrink-0 self-end sm:self-auto"
             aria-label={isPanelOpen ? "Fermer le panneau" : "Ouvrir le panneau"}
           >
             {isPanelOpen ? <PanelRightClose className="h-5 w-5" /> : <PanelLeftOpen className="h-5 w-5" />}
@@ -680,31 +682,34 @@ export default function ContactsPage() {
 
       <div className="flex flex-1 overflow-hidden min-h-0 relative">
         <main className={cn(
-          "flex-1 flex flex-col overflow-y-auto transition-all duration-300 ease-in-out p-4 md:p-6 pt-0",
+          "flex-1 flex flex-col overflow-y-auto transition-all duration-300 ease-in-out p-2 sm:p-4 md:p-6 pt-0",
           "min-w-0"
         )}>
           <div className='flex-grow'> 
-            <div className="mb-4 flex flex-col sm:flex-row justify-between items-center gap-4">
-              <TableSearchBar 
-                columns={searchableColumns}
-                initialSelectedColumnValue={selectedSearchColumn}
-                initialSearchTerm={searchTerm}
-                onSearchChange={handleSearchChange}
-              />
-              <FunctionKeyStatusMappingGuide mappings={fnKeyMappings} />
+            <div className="mb-2 sm:mb-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 sm:gap-4">
+              <div className="w-full sm:w-auto">
+                <TableSearchBar
+                  columns={searchableColumns}
+                  initialSelectedColumnValue={selectedSearchColumn}
+                  initialSearchTerm={searchTerm}
+                  onSearchChange={handleSearchChange}
+                  className="w-full"
+                />
+              </div>
+              <FunctionKeyStatusMappingGuide mappings={fnKeyMappings} className="mt-2 sm:mt-0 w-full sm:w-auto" />
             </div>
             <div 
               ref={tableViewportRef} 
               className="overflow-auto"
-              style={{ maxHeight: 'calc(100vh - 260px)' }} 
+              style={{ maxHeight: 'calc(100vh - 300px)' }} 
             >
               {isLoading ? (
                 <div className="flex items-center justify-center h-[300px]">
                   <Loader2 className="h-12 w-12 animate-spin text-primary" />
                 </div>
               ) : (
-                <ContactTable 
-                  data={filteredContacts} 
+                <ContactTable
+                  data={filteredContacts}
                   onEditContact={handleEditContactInline}
                   onActiveContactChange={setActiveContact}
                   scrollContainerRef={tableViewportRef}
@@ -733,7 +738,7 @@ export default function ContactsPage() {
             "overflow-y-auto scrollbar-thin scrollbar-thumb-muted scrollbar-track-transparent",
             "fixed top-0 right-0",
             "lg:relative lg:right-auto",
-            isPanelOpen ? "w-[350px] p-4" : "w-0 p-0 border-l-0 opacity-0"
+            isPanelOpen ? "w-[90vw] sm:w-[350px] p-4" : "w-0 p-0 border-l-0 opacity-0"
           )}
         >
           {isPanelOpen && (activeContact ? (

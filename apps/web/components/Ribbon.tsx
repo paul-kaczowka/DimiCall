@@ -403,7 +403,7 @@ export const Ribbon = React.forwardRef<HTMLDivElement, RibbonProps>((
   };
 
   return (
-    <div ref={ref} className="flex items-stretch gap-1 md:gap-2 overflow-x-auto scrollbar-thin scrollbar-thumb-muted scrollbar-track-transparent">
+    <div ref={ref} className="flex flex-wrap sm:flex-nowrap items-stretch gap-1 md:gap-2 overflow-x-auto scrollbar-thin scrollbar-thumb-muted scrollbar-track-transparent">
       <input 
         type="file" 
         ref={inputFileRef as React.RefObject<HTMLInputElement>} 
@@ -413,7 +413,7 @@ export const Ribbon = React.forwardRef<HTMLDivElement, RibbonProps>((
       />
 
       {/* Groupe 1: Appeler, Raccrocher */}
-      <div className="flex items-center gap-1 p-1 border border-muted rounded-md shadow-sm">
+      <div className="flex items-center gap-1 p-1 border border-muted rounded-md shadow-sm mb-1 sm:mb-0 w-full sm:w-auto">
         <RibbonButton 
           label="Appeler"
           icon={Phone} 
@@ -428,6 +428,7 @@ export const Ribbon = React.forwardRef<HTMLDivElement, RibbonProps>((
           }} 
           disabled={!activeContact || (!!contactInCallId && contactInCallId === activeContact?.id) || isImportPending}
           tooltipContent="Appeler le contact sélectionné"
+          className="flex-1 sm:flex-initial"
         />
         <RibbonButton 
           label="Raccrocher"
@@ -443,19 +444,21 @@ export const Ribbon = React.forwardRef<HTMLDivElement, RibbonProps>((
           }} 
           disabled={!activeContact || !contactInCallId || contactInCallId !== activeContact?.id || isImportPending}
           tooltipContent="Raccrocher l'appel en cours"
+          className="flex-1 sm:flex-initial"
         />
       </div>
 
       <RibbonSeparator />
 
       {/* Groupe 2: Email, Rappel, Rendez-vous */}
-      <div className="flex items-center gap-1 p-1 border border-muted rounded-md shadow-sm">
+      <div className="flex items-center gap-1 p-1 border border-muted rounded-md shadow-sm mb-1 sm:mb-0 w-full sm:w-auto">
         <RibbonButton 
           label="Email" 
           icon={Mail} 
           onClick={handleEmail}
           disabled={!activeContact || !activeContact.email || isImportPending}
           tooltipContent="Envoyer un email au contact sélectionné"
+          className="flex-1 sm:flex-initial"
         />
         
         <TooltipProvider delayDuration={300}>
@@ -470,7 +473,7 @@ export const Ribbon = React.forwardRef<HTMLDivElement, RibbonProps>((
               >
                 <Button
                   variant="ghost"
-                  className={cn(buttonVariants({ variant: 'ghost', size: 'lg' }), "flex-1 flex-col h-auto p-2 min-w-[70px] data-[state=open]:bg-accent data-[state=open]:text-accent-foreground")}
+                  className={cn(buttonVariants({ variant: 'ghost', size: 'lg' }), "flex-1 sm:flex-initial flex-col h-auto p-2 min-w-[70px] data-[state=open]:bg-accent data-[state=open]:text-accent-foreground")}
                   disabled={!activeContact || isImportPending}
                   type="button"
                   aria-label="Rappel"
@@ -491,19 +494,21 @@ export const Ribbon = React.forwardRef<HTMLDivElement, RibbonProps>((
           onClick={handleCalComRendezVous}
           disabled={!activeContact}
           tooltipContent="Prendre un rendez-vous (Cal.com)"
+          className="flex-1 sm:flex-initial"
         />
       </div>
       
       <RibbonSeparator />
 
       {/* Groupe 3: LinkedIn, Google - Ajout de l'encadrement */}
-      <div className="flex items-center gap-1 p-1 border border-muted rounded-md shadow-sm">
+      <div className="flex items-center gap-1 p-1 border border-muted rounded-md shadow-sm mb-1 sm:mb-0 w-full sm:w-auto">
         <RibbonButton
           label="LinkedIn"
           icon={Linkedin}
           onClick={handleLinkedInSearch}
           disabled={!activeContact || !activeContact.firstName || !activeContact.lastName}
           tooltipContent="Rechercher le contact sur LinkedIn"
+          className="flex-1 sm:flex-initial"
         />
         <RibbonButton
           label="Google"
@@ -511,19 +516,21 @@ export const Ribbon = React.forwardRef<HTMLDivElement, RibbonProps>((
           onClick={handleGoogleSearch}
           disabled={!activeContact || !activeContact.firstName || !activeContact.lastName}
           tooltipContent="Rechercher le contact sur Google"
+          className="flex-1 sm:flex-initial"
         />
       </div>
 
       <RibbonSeparator />
       
       {/* Groupe 4: Importer, Exporter, Tout Effacer */}
-      <div className="flex items-center gap-1 p-1 border border-muted rounded-md shadow-sm">
+      <div className="flex items-center gap-1 p-1 border border-muted rounded-md shadow-sm w-full sm:w-auto">
         <RibbonButton 
           label="Importer"
           icon={UploadCloud} 
           onClick={handleImportClick} 
           disabled={isImportPending || isAutosaveSaving}
           tooltipContent={isImportPending ? "Importation en cours..." : (isAutosaveSaving ? "Sauvegarde auto en cours..." : "Importer des contacts (fichier CSV/Excel)")}
+          className="flex-1 sm:flex-initial"
         />
         <RibbonButton 
           label="Exporter"
@@ -531,6 +538,7 @@ export const Ribbon = React.forwardRef<HTMLDivElement, RibbonProps>((
           onClick={onExportClick}
           disabled={isImportPending || isAutosaveSaving}
           tooltipContent="Exporter les contacts actuels"
+          className="flex-1 sm:flex-initial"
         />
         <RibbonButton 
           label="Tout effacer"
@@ -539,6 +547,7 @@ export const Ribbon = React.forwardRef<HTMLDivElement, RibbonProps>((
           variant="destructive"
           disabled={isImportPending || isAutosaveSaving}
           tooltipContent="Effacer tous les contacts (demande une confirmation)"
+          className="flex-1 sm:flex-initial"
         />
       </div>
     </div>

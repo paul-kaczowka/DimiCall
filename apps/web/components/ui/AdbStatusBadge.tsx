@@ -19,7 +19,11 @@ interface AdbStatusResponse {
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 const POLLING_INTERVAL = 10000; // 10 secondes
 
-export function AdbStatusBadge() {
+type AdbStatusBadgeProps = {
+  className?: string;
+};
+
+export function AdbStatusBadge({ className }: AdbStatusBadgeProps) {
   const [adbStatus, setAdbStatus] = useState<string | null>(null); // 'connected', 'disconnected', 'unauthorized', 'error'
   const [batteryLevel, setBatteryLevel] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -168,7 +172,8 @@ export function AdbStatusBadge() {
             adbStatus === 'connected' ? (batteryLevel !== null && batteryLevel <= 20 ? "border-orange-500/50" : "border-green-500/50") :
             adbStatus === 'unauthorized' ? "border-yellow-600/50" :
             adbStatus === 'disconnected' ? "border-red-600/50" :
-            "border-border"
+            "border-border",
+            className
           )}>
             <StatusIcon className={cn("h-5 w-5", iconColor, (isLoading && adbStatus === null) ? "animate-spin" : "")} />
             <span className={cn(iconColor, "whitespace-nowrap")}>{statusText}</span>

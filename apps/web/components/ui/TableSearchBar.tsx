@@ -20,39 +20,32 @@ export interface SearchableColumn {
 
 interface TableSearchBarProps {
   columns: SearchableColumn[];
-  onSearchChange: (searchTerm: string, selectedColumnValue: string) => void;
-  initialSearchTerm?: string;
   initialSelectedColumnValue?: string;
-  searchInputPlaceholder?: string;
-  selectPlaceholder?: string;
+  initialSearchTerm?: string;
+  onSearchChange: (searchTerm: string, selectedColumn: string) => void;
   className?: string;
 }
 
 export function TableSearchBar({
   columns,
-  onSearchChange,
+  initialSelectedColumnValue = '',
   initialSearchTerm = '',
-  initialSelectedColumnValue,
-  searchInputPlaceholder = 'Rechercher...',
-  selectPlaceholder = 'Filtrer par...',
-  className,
+  onSearchChange,
+  className
 }: TableSearchBarProps) {
   const [searchTerm, setSearchTerm] = useState(initialSearchTerm);
+  const [selectedColumn, setSelectedColumn] = useState(initialSelectedColumnValue);
   
   const validColumns = useMemo(() => columns.filter(col => col.value && col.value.trim() !== ''), [columns]);
-
-  const [selectedColumn, setSelectedColumn] = useState(() => {
-    const initial = initialSelectedColumnValue && validColumns.find(col => col.value === initialSelectedColumnValue)
-      ? initialSelectedColumnValue
-      : validColumns.length > 0 ? validColumns[0].value : '';
-    return initial;
-  });
 
   useEffect(() => {
     if (initialSelectedColumnValue && validColumns.find(col => col.value === initialSelectedColumnValue)) {
       setSelectedColumn(initialSelectedColumnValue);
+    } else if (validColumns.length > 0 && !selectedColumn) {
+      // Si aucune colonne n'est sélectionnée, sélectionner la première par défaut
+      setSelectedColumn(validColumns[0].value);
     }
-  }, [initialSelectedColumnValue, validColumns]);
+  }, [initialSelectedColumnValue, validColumns, selectedColumn]);
 
   useEffect(() => {
     onSearchChange(searchTerm, selectedColumn);
@@ -66,18 +59,14 @@ export function TableSearchBar({
     setSelectedColumn(value);
   };
 
-  const currentColumnData = useMemo(() => 
-    validColumns.find(col => col.value === selectedColumn)
-  , [selectedColumn, validColumns]);
-
   return (
-    <div className={cn("flex items-center w-full max-w-lg rounded-full overflow-hidden", className)}>
+    <div className={cn("flex items-center space-x-2 relative", className)}>
       <Select value={selectedColumn} onValueChange={handleSelectedColumnChange}>
         <SelectTrigger 
           className="flex items-center gap-2 pl-3 pr-2 py-2 h-full text-sm text-muted-foreground border-0 focus:ring-0 focus:ring-offset-0 shadow-none bg-transparent min-w-[150px] whitespace-nowrap"
           aria-label="Sélectionner la colonne pour la recherche"
         >
-          <SelectValue placeholder={selectPlaceholder} />
+          <SelectValue placeholder="Filtrer par..." />
         </SelectTrigger>
         <SelectContent>
           {validColumns.map((column) => (
@@ -95,7 +84,7 @@ export function TableSearchBar({
       
       <Input
         type="search"
-        placeholder={searchInputPlaceholder}
+        placeholder="Rechercher..."
         value={searchTerm}
         onChange={handleSearchTermChange}
         className="h-full flex-grow px-3 py-2 text-sm bg-transparent border-0 focus:ring-0 focus:ring-offset-0 shadow-none placeholder:text-muted-foreground"

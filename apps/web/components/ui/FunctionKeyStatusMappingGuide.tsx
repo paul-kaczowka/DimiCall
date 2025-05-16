@@ -15,11 +15,14 @@ interface FunctionKeyStatusMappingGuideProps {
   className?: string;
 }
 
-export const FunctionKeyStatusMappingGuide: React.FC<FunctionKeyStatusMappingGuideProps> = ({ mappings, className }) => {
+export function FunctionKeyStatusMappingGuide({ 
+  mappings,
+  className
+}: FunctionKeyStatusMappingGuideProps) {
   if (!mappings || mappings.length === 0) {
     return null;
   }
-
+  
   return (
     <div className={cn("text-xs p-1 border rounded-md border-border", className)}>
       <h3 className="text-xs font-medium text-center text-card-foreground mb-1">Raccourcis Statuts</h3>
@@ -37,6 +40,6 @@ export const FunctionKeyStatusMappingGuide: React.FC<FunctionKeyStatusMappingGui
       </div>
     </div>
   );
-};
+}
 
 FunctionKeyStatusMappingGuide.displayName = 'FunctionKeyStatusMappingGuide'; 
