@@ -25,6 +25,24 @@ import { cn } from '@/lib/utils';
 // import { AdbStatusBadge } from '@/components/ui/AdbStatusBadge'; // Supprimé
 import type { Contact } from '@/lib/schemas/contact';
 import { DateTimePicker24h } from './ui/DateTimePicker24h';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Label } from "@/components/ui/label";
+import { format, isValid } from 'date-fns';
+import { fr } from 'date-fns/locale';
+import { Calendar } from '@/components/ui/calendar';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 
 // TODO: Remplacez "votre-nom-utilisateur/votre-type-d-evenement" par votre slug d'événement Cal.com réel
 // ou configurez la variable d'environnement NEXT_PUBLIC_CAL_COM_EVENT_SLUG
@@ -143,9 +161,237 @@ const RibbonSeparator = () => (
 // Constante pour l'URL de l'API
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
+// Type pour les états du toggle
+type AutoSearchMode = 'disabled' | 'linkedin' | 'google';
+
+// Composant TriStateToggle pour la recherche automatique
+interface TriStateToggleProps {
+  value: AutoSearchMode;
+  onChange: (value: AutoSearchMode) => void;
+  disabled?: boolean;
+}
+
+const TriStateToggle: React.FC<TriStateToggleProps> = ({ value, onChange, disabled = false }) => {
+  const handleClick = () => {
+    if (disabled) return;
+    
+    // Cycle entre les états: disabled -> linkedin -> google -> disabled
+    const nextValue = 
+      value === 'disabled' ? 'linkedin' : 
+      value === 'linkedin' ? 'google' : 
+      'disabled';
+    
+    onChange(nextValue);
+  };
+
+  return (
+    <TooltipProvider delayDuration={300}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <div 
+            onClick={handleClick}
+            className={cn(
+              "relative h-7 w-16 rounded-full transition-colors duration-300 cursor-pointer overflow-hidden",
+              disabled ? "opacity-50 cursor-not-allowed" : "",
+              "border border-input",
+              value === 'disabled' ? "bg-muted" : 
+              value === 'linkedin' ? "bg-[#0077B5]/20" : 
+              "bg-blue-500/20",
+              // Ajout d'un effet de hover
+              !disabled && "hover:border-primary/50"
+            )}
+            role="button"
+            tabIndex={disabled ? -1 : 0}
+            aria-disabled={disabled}
+          >
+            {/* Fond avec dégradé subtil */}
+            <div className="absolute inset-0 w-full h-full opacity-10 bg-gradient-to-r from-[#0077B5]/40 via-transparent to-blue-500/40"></div>
+            
+            {/* Icônes miniatures à l'intérieur du toggle */}
+            <div className="absolute top-1/2 left-2 transform -translate-y-1/2 text-[#0077B5] opacity-70">
+              <Linkedin className="h-3 w-3" />
+            </div>
+            
+            <div className="absolute top-1/2 right-2 transform -translate-y-1/2 text-blue-600 opacity-70">
+              <Globe className="h-3 w-3" />
+            </div>
+            
+            {/* Indicateur mobile avec animation plus élaborée */}
+            <div 
+              className={cn(
+                "absolute top-1 h-5 w-5 rounded-full transform transition-all duration-300",
+                // Animation plus fluide avec cubic-bezier
+                "transition-all duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)]",
+                value === 'disabled' ? "left-[calc(50%-10px)] bg-gray-400" :
+                value === 'linkedin' ? "left-2 bg-[#0077B5]" : 
+                "left-[calc(100%-26px)] bg-blue-500",
+                "shadow-md flex items-center justify-center"
+              )}
+            >
+              {/* Effet de lueur intérieure */}
+              <div className="absolute inset-0 rounded-full bg-gradient-to-br from-white/30 to-transparent opacity-80"></div>
+              
+              {/* Cercle central uniquement visible en position centrale (désactivé) */}
+              {value === 'disabled' && (
+                <div className="w-2 h-2 bg-gray-200 rounded-full shadow-inner"></div>
+              )}
+            </div>
+          </div>
+        </TooltipTrigger>
+        <TooltipContent side="bottom" className="text-xs">
+          <p>
+            {value === 'disabled' 
+              ? "Recherche auto désactivée" 
+              : value === 'linkedin' 
+                ? "Recherche LinkedIn automatique à l'appel" 
+                : "Recherche Google automatique à l'appel"}
+          </p>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+};
+
+// Type pour les rendez-vous
+type MeetingType = 'D0' | 'R0-int' | 'R0-ext';
+type GenderType = 'Monsieur' | 'Madame';
+
+// Templates d'emails
+const EMAIL_TEMPLATES = {
+  'D0': (lastName: string, dateTime: string, gender: GenderType) => 
+    `Bonjour ${gender} ${lastName}, merci pour votre temps lors de notre échange téléphonique. 
+ 
+Suite à notre appel, je vous confirme notre entretien du ${dateTime} en visio.
+
+Pour rappel, notre entretien durera une trentaine de minutes. Le but est de vous présenter plus en détail Arcanis Conseil, d'effectuer ensemble l'état des lieux de votre situation patrimoniale (revenus, patrimoine immobilier, épargne constituée etc.), puis de vous donner un diagnostic de votre situation. Notre métier est de vous apporter un conseil pertinent et personnalisé sur l'optimisation de votre patrimoine.
+
+Vous pouvez également visiter notre site internet pour de plus amples renseignements : www.arcanis-conseil.fr
+ 
+N'hésitez pas à revenir vers moi en cas de question ou d'un besoin supplémentaire d'information.
+
+Bien cordialement,`,
+
+  'R0-int': (lastName: string, dateTime: string, gender: GenderType) => 
+    `Bonjour ${gender} ${lastName}, merci pour votre temps lors de notre échange téléphonique. 
+ 
+Suite à notre appel, je vous confirme notre entretien du ${dateTime} dans nos locaux au 22 rue la boétie.
+
+Pour rappel, notre entretien durera une trentaine de minutes. Le but est de vous présenter plus en détail Arcanis Conseil, d'effectuer ensemble l'état des lieux de votre situation patrimoniale (revenus, patrimoine immobilier, épargne constituée etc.), puis de vous donner un diagnostic de votre situation. Notre métier est de vous apporter un conseil pertinent et personnalisé sur l'optimisation de votre patrimoine.
+
+Vous pouvez également visiter notre site internet pour de plus amples renseignements : www.arcanis-conseil.fr
+ 
+N'hésitez pas à revenir vers moi en cas de question ou d'un besoin supplémentaire d'information.
+
+Bien cordialement,`,
+
+  'R0-ext': (lastName: string, dateTime: string, gender: GenderType) => 
+    `Bonjour ${gender} ${lastName}, merci pour votre temps lors de notre échange téléphonique. 
+ 
+Suite à notre appel, je vous confirme notre entretien du ${dateTime} à (adresse du client)
+
+Pour rappel, notre entretien durera une trentaine de minutes. Le but est de vous présenter plus en détail Arcanis Conseil, d'effectuer ensemble l'état des lieux de votre situation patrimoniale (revenus, patrimoine immobilier, épargne constituée etc.), puis de vous donner un diagnostic de votre situation. Notre métier est de vous apporter un conseil pertinent et personnalisé sur l'optimisation de votre patrimoine.
+
+Vous pouvez également visiter notre site internet pour de plus amples renseignements : www.arcanis-conseil.fr
+ 
+N'hésitez pas à revenir vers moi en cas de question ou d'un besoin supplémentaire d'information.
+
+Bien cordialement,`
+};
+
+// Composant sélecteur de date et heure personnalisé
+const SimpleDateTimePicker = ({ 
+  date, 
+  setDate
+}: { 
+  date: Date | undefined, 
+  setDate: (date: Date | undefined) => void 
+}) => {
+  const hours = Array.from({ length: 24 }, (_, i) => i);
+  
+  const handleDateSelect = (selectedDate: Date | undefined) => {
+    if (selectedDate && isValid(selectedDate)) {
+      const newDateToSet = date ? new Date(date) : new Date();
+      newDateToSet.setFullYear(selectedDate.getFullYear());
+      newDateToSet.setMonth(selectedDate.getMonth());
+      newDateToSet.setDate(selectedDate.getDate());
+      if (!date) { 
+        newDateToSet.setHours(14, 0, 0, 0); // Heure par défaut: 14h
+      }
+      setDate(newDateToSet);
+    }
+  };
+
+  const handleTimeChange = (
+    type: "hour" | "minute",
+    value: string
+  ) => {
+    const newDateToSet = date ? new Date(date) : new Date(); 
+    if (type === "hour") {
+      newDateToSet.setHours(parseInt(value));
+    } else if (type === "minute") {
+      newDateToSet.setMinutes(parseInt(value));
+    }
+    if (isValid(newDateToSet)) {
+      setDate(newDateToSet);
+    }
+  };
+
+  return (
+    <div className="mt-4 space-y-4">
+      <div className="flex flex-col space-y-2">
+        <h3 className="font-medium text-sm">Date et heure du rendez-vous</h3>
+        <Calendar
+          mode="single"
+          selected={date}
+          onSelect={handleDateSelect}
+          className="border rounded-md"
+          locale={fr}
+          captionLayout="dropdown"
+          fromYear={new Date().getFullYear() - 1}
+          toYear={new Date().getFullYear() + 2}
+        />
+      </div>
+      
+      <div className="flex items-center space-x-4">
+        <div className="flex flex-col space-y-1 flex-1">
+          <Label htmlFor="hour">Heure</Label>
+          <select
+            id="hour"
+            className="h-10 border border-input bg-background rounded-md px-3"
+            onChange={(e) => handleTimeChange("hour", e.target.value)}
+            value={date?.getHours() ?? 14}
+          >
+            {hours.map((hour) => (
+              <option key={hour} value={hour}>
+                {hour.toString().padStart(2, '0')}h
+              </option>
+            ))}
+          </select>
+        </div>
+        
+        <div className="flex flex-col space-y-1 flex-1">
+          <Label htmlFor="minute">Minute</Label>
+          <select
+            id="minute"
+            className="h-10 border border-input bg-background rounded-md px-3"
+            onChange={(e) => handleTimeChange("minute", e.target.value)}
+            value={date?.getMinutes() ?? 0}
+          >
+            {[0, 15, 30, 45].map((minute) => (
+              <option key={minute} value={minute}>
+                {minute.toString().padStart(2, '0')}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 export const Ribbon = React.forwardRef<HTMLDivElement, RibbonProps>((
   { 
-    selectedContactEmail, // Peut être retiré si handleEmail utilise uniquement activeContact
+    selectedContactEmail, 
     inputFileRef,
     handleFileSelectedForImport,
     isImportPending,
@@ -156,13 +402,26 @@ export const Ribbon = React.forwardRef<HTMLDivElement, RibbonProps>((
     hangUpFormAction,
     contactInCallId,
     onExportClick,
-    // onRappelClick, // Supprimé
-    // onEmailClick, // Supprimé
     onBookingCreated,
     onRappelDateTimeSelected
   },
   ref
 ) => {
+  // État pour suivre le mode de recherche automatique
+  const [autoSearchMode, setAutoSearchMode] = useState<AutoSearchMode>('disabled');
+  
+  // États pour le modal d'email
+  const [emailModalOpen, setEmailModalOpen] = useState(false);
+  const [selectedMeetingType, setSelectedMeetingType] = useState<MeetingType>('D0');
+  const [selectedGender, setSelectedGender] = useState<GenderType>('Monsieur');
+  const [selectedDate, setSelectedDate] = useState<Date | undefined>(
+    () => {
+      const date = new Date();
+      date.setHours(14, 0, 0, 0); // Par défaut à 14h
+      return date;
+    }
+  );
+
   const initializeCal = async () => {
     try {
       // Initialisation AVEC le namespace pour une config globale
@@ -271,6 +530,13 @@ export const Ribbon = React.forwardRef<HTMLDivElement, RibbonProps>((
       formData.append('contactId', activeContact.id);
       startTransition(() => {
         callFormAction(formData);
+        
+        // Si le mode de recherche automatique est activé, déclencher la recherche appropriée
+        if (autoSearchMode === 'linkedin') {
+          handleLinkedInSearch();
+        } else if (autoSearchMode === 'google') {
+          handleGoogleSearch();
+        }
       });
       // La logique pour définir l'appel en cours est maintenant dans page.tsx via le retour de callAction
     } else {
@@ -291,12 +557,79 @@ export const Ribbon = React.forwardRef<HTMLDivElement, RibbonProps>((
     }
   };
 
+  // Fonction pour formater la date et l'heure en français
+  const formatDateTimeForEmail = (date: Date | undefined) => {
+    if (!date || !isValid(date)) return "date et heure à déterminer";
+    
+    // Obtenir le jour de la semaine en français
+    const weekday = date.toLocaleDateString('fr-FR', { weekday: 'long' });
+    
+    // Formater le jour, mois, année
+    const day = date.getDate();
+    const month = date.toLocaleDateString('fr-FR', { month: 'long' });
+    const year = date.getFullYear();
+    
+    // Formater l'heure
+    const hour = date.getHours();
+    const minute = date.getMinutes();
+    const formattedTime = `${hour}h${minute > 0 ? minute.toString().padStart(2, '0') : ''}`;
+    
+    return `${weekday} ${day} ${month} ${year} à ${formattedTime}`;
+  };
+
+  // Fonction pour générer et ouvrir l'email
+  const generateAndOpenEmail = () => {
+    if (!activeContact || !activeContact.email || !activeContact.lastName) {
+      toast.error("Les informations du contact sont incomplètes.");
+      return;
+    }
+
+    const formattedDateTime = formatDateTimeForEmail(selectedDate);
+    const emailSubject = `Confirmation rendez-vous ${selectedMeetingType === 'D0' ? 'visio' : 'présentiel'} - Arcanis Conseil`;
+    const emailBody = EMAIL_TEMPLATES[selectedMeetingType](
+      activeContact.lastName, 
+      formattedDateTime, 
+      selectedGender
+    );
+    
+    // Encoder le sujet et le corps pour l'URL Gmail
+    const encodedSubject = encodeURIComponent(emailSubject);
+    const encodedBody = encodeURIComponent(emailBody);
+    const encodedTo = encodeURIComponent(activeContact.email);
+    
+    // Créer l'URL Gmail pour la composition d'un nouveau message
+    const gmailUrl = `https://mail.google.com/mail/u/0/?to=${encodedTo}&su=${encodedSubject}&body=${encodedBody}&tf=cm`;
+    
+    // Ouvrir dans un nouvel onglet
+    window.open(gmailUrl, '_blank');
+    
+    // Fermer le modal
+    setEmailModalOpen(false);
+    
+    toast.success("Email préparé avec succès dans Gmail !");
+  };
+
+  // Remplacer la fonction handleEmail existante
   const handleEmail = () => {
     if (!activeContact || !activeContact.email) {
       toast.info(activeContact ? "L'email de ce contact n'est pas renseigné." : "Veuillez sélectionner un contact pour envoyer un email.");
       return;
     }
-    window.location.href = `mailto:${activeContact.email}`; // Utilise activeContact.email
+    
+    // Ouvrir le modal au lieu d'ouvrir directement l'email
+    setEmailModalOpen(true);
+    
+    // Définir le genre par défaut en fonction du prénom (si disponible)
+    if (activeContact.firstName) {
+      // Logique simple: si le prénom se termine par 'a', 'e', ou certaines autres lettres, considérer comme féminin
+      // Cette logique est simpliste et ne fonctionne pas pour tous les prénoms
+      const lastChar = activeContact.firstName.toLowerCase().slice(-1);
+      if (['a', 'e', 'é', 'è', 'ê', 'i', 'y'].includes(lastChar)) {
+        setSelectedGender('Madame');
+      } else {
+        setSelectedGender('Monsieur');
+      }
+    }
   };
 
   const handleImportClick = () => {
@@ -510,6 +843,17 @@ export const Ribbon = React.forwardRef<HTMLDivElement, RibbonProps>((
           tooltipContent="Rechercher le contact sur LinkedIn"
           className="flex-1 sm:flex-initial"
         />
+        
+        {/* Ajout du toggle de recherche automatique entre les deux boutons */}
+        <div className="flex flex-col items-center justify-center mx-1 min-w-[60px]">
+          <TriStateToggle 
+            value={autoSearchMode} 
+            onChange={setAutoSearchMode}
+            disabled={!activeContact || !activeContact.firstName || !activeContact.lastName}
+          />
+          <span className="text-xs mt-1 text-muted-foreground">Recherche auto</span>
+        </div>
+        
         <RibbonButton
           label="Google"
           icon={Globe}
@@ -550,6 +894,76 @@ export const Ribbon = React.forwardRef<HTMLDivElement, RibbonProps>((
           className="flex-1 sm:flex-initial"
         />
       </div>
+
+      {/* Modal pour la création d'email */}
+      <Dialog open={emailModalOpen} onOpenChange={setEmailModalOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Création d'email</DialogTitle>
+          </DialogHeader>
+          
+          <div className="space-y-5 py-4">
+            {/* Sélecteur de type de rendez-vous */}
+            <div className="space-y-3">
+              <h3 className="font-medium text-sm">Type de rendez-vous</h3>
+              <div className="flex gap-4 flex-wrap">
+                <Button
+                  variant={selectedMeetingType === 'D0' ? 'default' : 'outline'}
+                  className="flex-1"
+                  onClick={() => setSelectedMeetingType('D0')}
+                >
+                  D0 (Visio)
+                </Button>
+                <Button
+                  variant={selectedMeetingType === 'R0-int' ? 'default' : 'outline'}
+                  className="flex-1"
+                  onClick={() => setSelectedMeetingType('R0-int')}
+                >
+                  R0 (Interne)
+                </Button>
+                <Button
+                  variant={selectedMeetingType === 'R0-ext' ? 'default' : 'outline'}
+                  className="flex-1"
+                  onClick={() => setSelectedMeetingType('R0-ext')}
+                >
+                  R0 (Externe)
+                </Button>
+              </div>
+            </div>
+            
+            {/* Sélecteur de civilité */}
+            <div className="space-y-3">
+              <h3 className="font-medium text-sm">Civilité</h3>
+              <RadioGroup 
+                value={selectedGender} 
+                onValueChange={(value: string) => setSelectedGender(value as GenderType)}
+                className="flex gap-4"
+              >
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="Monsieur" id="monsieur" />
+                  <Label htmlFor="monsieur">Monsieur</Label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="Madame" id="madame" />
+                  <Label htmlFor="madame">Madame</Label>
+                </div>
+              </RadioGroup>
+            </div>
+            
+            {/* Sélecteur de date et heure */}
+            <SimpleDateTimePicker date={selectedDate} setDate={setSelectedDate} />
+          </div>
+          
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEmailModalOpen(false)}>
+              Annuler
+            </Button>
+            <Button onClick={generateAndOpenEmail}>
+              Générer l'email
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 });

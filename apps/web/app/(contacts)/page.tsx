@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useState, useRef, startTransition, useMemo } from 'react';
 import { useActionState } from 'react';
-import { format, parseISO } from 'date-fns';
+import { format, parseISO, isValid } from 'date-fns';
 import { Ribbon } from '@/components/Ribbon';
 import { ContactTable } from '@/components/ContactTable';
 import { TableSearchBar, type SearchableColumn } from '@/components/ui/TableSearchBar';
@@ -71,6 +71,27 @@ interface ContactAppType extends ContactSchemaType {
   // bookingTitle?: string | null; // SUPPRIMÉ
   // bookingDuration?: number | null; // SUPPRIMÉ
 }
+
+// Fonction utilitaire pour vérifier et formater des dates de manière sécurisée
+const safeFormat = (date: Date | string | null | undefined, formatStr: string, options = {}) => {
+  if (!date) return null;
+  
+  try {
+    // Si c'est une chaîne, essayez de la convertir en objet Date
+    const dateObj = typeof date === 'string' ? parseISO(date) : date;
+    
+    // Vérifiez si la date est valide
+    if (!isValid(dateObj)) {
+      console.warn("Date invalide détectée:", date);
+      return null;
+    }
+    
+    return format(dateObj, formatStr, options);
+  } catch (error) {
+    console.error("Erreur lors du formatage de la date:", error, date);
+    return null;
+  }
+};
 
 export default function ContactsPage() {
   const [contacts, setContacts] = useState<ContactAppType[]>([]);
@@ -602,11 +623,18 @@ export default function ContactsPage() {
       return;
     }
 
+    if (!isValid(dateTime)) {
+      toast.error("La date sélectionnée n'est pas valide.");
+      return;
+    }
+
     const dateRappel = format(dateTime, 'yyyy-MM-dd');
     const heureRappel = format(dateTime, 'HH:mm');
 
     console.log(`[ContactsPage] Rappel programmé pour ${activeContact.firstName} ${activeContact.lastName} (ID: ${activeContact.id}) le ${dateRappel} à ${heureRappel}`);
-    toast.info(`Rappel programmé pour ${activeContact.firstName} le ${format(dateTime, 'dd/MM/yyyy')} à ${heureRappel}.`);
+    
+    const formattedDisplayDate = safeFormat(dateTime, 'dd/MM/yyyy', { locale: fr });
+    toast.info(`Rappel programmé pour ${activeContact.firstName} le ${formattedDisplayDate || 'date invalide'} à ${heureRappel}.`);
 
     const formData = new FormData();
     formData.append('contactId', activeContact.id);
@@ -941,16 +969,25 @@ export default function ContactsPage() {
                                 <PopoverTrigger asChild>
                                   <div className="font-medium min-h-[28px] flex items-center transition-colors duration-150 ease-in-out text-sm italic text-muted-foreground/70 hover:bg-muted/30 rounded-md -m-px p-px cursor-text">
                                     {activeContact.dateAppel ? 
-                                      format(parseISO(activeContact.dateAppel), 'dd/MM/yyyy', { locale: fr }) : 
+                                      safeFormat(parseISO(activeContact.dateAppel), 'dd/MM/yyyy', { locale: fr }) || "Date invalide" : 
                                       "Non renseigné"}
                                   </div>
                                 </PopoverTrigger>
                                 <PopoverContent className="w-auto p-0">
                                   <Calendar
                                     mode="single"
-                                    selected={activeContact.dateAppel ? parseISO(activeContact.dateAppel) : undefined}
+                                    selected={activeContact.dateAppel ? 
+                                      (() => {
+                                        try {
+                                          const parsedDate = parseISO(activeContact.dateAppel);
+                                          return isValid(parsedDate) ? parsedDate : undefined;
+                                        } catch {
+                                          return undefined;
+                                        }
+                                      })() : 
+                                      undefined}
                                     onSelect={(date) => {
-                                      if (date) {
+                                      if (date && isValid(date)) {
                                         handleEditContactInline({ 
                                           id: activeContact.id, 
                                           dateAppel: format(date, 'yyyy-MM-dd') 
@@ -981,13 +1018,28 @@ export default function ContactsPage() {
                                 <PopoverContent className="w-auto p-0">
                                   <TimePickerOnly
                                     date={activeContact.heureAppel ? (() => {
-                                      const [hours, minutes] = activeContact.heureAppel.split(':');
-                                      const date = new Date();
-                                      date.setHours(parseInt(hours, 10), parseInt(minutes, 10), 0, 0);
-                                      return date;
+                                      try {
+                                        const [hours, minutes] = activeContact.heureAppel.split(':');
+                                        const hoursNum = parseInt(hours, 10);
+                                        const minutesNum = parseInt(minutes, 10);
+                                        
+                                        if (isNaN(hoursNum) || isNaN(minutesNum) || 
+                                            hoursNum < 0 || hoursNum > 23 || 
+                                            minutesNum < 0 || minutesNum > 59) {
+                                          console.warn("Heure invalide:", activeContact.heureAppel);
+                                          return new Date();
+                                        }
+                                        
+                                        const date = new Date();
+                                        date.setHours(hoursNum, minutesNum, 0, 0);
+                                        return date;
+                                      } catch (e) {
+                                        console.error("Erreur parsing heure:", e);
+                                        return new Date();
+                                      }
                                     })() : new Date()}
                                     onChange={(date) => {
-                                      if (date) {
+                                      if (date && isValid(date)) {
                                         handleEditContactInline({ 
                                           id: activeContact.id, 
                                           heureAppel: format(date, 'HH:mm') 
@@ -1010,16 +1062,25 @@ export default function ContactsPage() {
                                 <PopoverTrigger asChild>
                                   <div className="font-medium min-h-[28px] flex items-center transition-colors duration-150 ease-in-out text-sm hover:bg-muted/30 rounded-md -m-px p-px cursor-text">
                                     {activeContact.dateRappel ? 
-                                      format(parseISO(activeContact.dateRappel), 'dd/MM/yyyy', { locale: fr }) : 
+                                      safeFormat(parseISO(activeContact.dateRappel), 'dd/MM/yyyy', { locale: fr }) || "Date invalide" : 
                                       "Non renseigné"}
                                   </div>
                                 </PopoverTrigger>
                                 <PopoverContent className="w-auto p-0">
                                   <Calendar
                                     mode="single"
-                                    selected={activeContact.dateRappel ? parseISO(activeContact.dateRappel) : undefined}
+                                    selected={activeContact.dateRappel ? 
+                                      (() => {
+                                        try {
+                                          const parsedDate = parseISO(activeContact.dateRappel);
+                                          return isValid(parsedDate) ? parsedDate : undefined;
+                                        } catch {
+                                          return undefined;
+                                        }
+                                      })() : 
+                                      undefined}
                                     onSelect={(date) => {
-                                      if (date) {
+                                      if (date && isValid(date)) {
                                         handleEditContactInline({ 
                                           id: activeContact.id, 
                                           dateRappel: format(date, 'yyyy-MM-dd') 
@@ -1050,13 +1111,28 @@ export default function ContactsPage() {
                                 <PopoverContent className="w-auto p-0">
                                   <TimePickerOnly
                                     date={activeContact.heureRappel ? (() => {
-                                      const [hours, minutes] = activeContact.heureRappel.split(':');
-                                      const date = new Date();
-                                      date.setHours(parseInt(hours, 10), parseInt(minutes, 10), 0, 0);
-                                      return date;
+                                      try {
+                                        const [hours, minutes] = activeContact.heureRappel.split(':');
+                                        const hoursNum = parseInt(hours, 10);
+                                        const minutesNum = parseInt(minutes, 10);
+                                        
+                                        if (isNaN(hoursNum) || isNaN(minutesNum) || 
+                                            hoursNum < 0 || hoursNum > 23 || 
+                                            minutesNum < 0 || minutesNum > 59) {
+                                          console.warn("Heure invalide:", activeContact.heureRappel);
+                                          return new Date();
+                                        }
+                                        
+                                        const date = new Date();
+                                        date.setHours(hoursNum, minutesNum, 0, 0);
+                                        return date;
+                                      } catch (e) {
+                                        console.error("Erreur parsing heure:", e);
+                                        return new Date();
+                                      }
                                     })() : new Date()}
                                     onChange={(date) => {
-                                      if (date) {
+                                      if (date && isValid(date)) {
                                         handleEditContactInline({ 
                                           id: activeContact.id, 
                                           heureRappel: format(date, 'HH:mm') 
@@ -1079,16 +1155,25 @@ export default function ContactsPage() {
                                 <PopoverTrigger asChild>
                                   <div className="font-medium min-h-[28px] flex items-center transition-colors duration-150 ease-in-out text-sm italic text-muted-foreground/70 hover:bg-muted/30 rounded-md -m-px p-px cursor-text">
                                     {activeContact.dateRendezVous ? 
-                                      format(parseISO(activeContact.dateRendezVous), 'dd/MM/yyyy', { locale: fr }) : 
+                                      safeFormat(parseISO(activeContact.dateRendezVous), 'dd/MM/yyyy', { locale: fr }) || "Date invalide" : 
                                       "Non renseigné"}
                                   </div>
                                 </PopoverTrigger>
                                 <PopoverContent className="w-auto p-0">
                                   <Calendar
                                     mode="single"
-                                    selected={activeContact.dateRendezVous ? parseISO(activeContact.dateRendezVous) : undefined}
+                                    selected={activeContact.dateRendezVous ? 
+                                      (() => {
+                                        try {
+                                          const parsedDate = parseISO(activeContact.dateRendezVous);
+                                          return isValid(parsedDate) ? parsedDate : undefined;
+                                        } catch {
+                                          return undefined;
+                                        }
+                                      })() : 
+                                      undefined}
                                     onSelect={(date) => {
-                                      if (date) {
+                                      if (date && isValid(date)) {
                                         handleEditContactInline({ 
                                           id: activeContact.id, 
                                           dateRendezVous: format(date, 'yyyy-MM-dd') 
@@ -1119,13 +1204,28 @@ export default function ContactsPage() {
                                 <PopoverContent className="w-auto p-0">
                                   <TimePickerOnly
                                     date={activeContact.heureRendezVous ? (() => {
-                                      const [hours, minutes] = activeContact.heureRendezVous.split(':');
-                                      const date = new Date();
-                                      date.setHours(parseInt(hours, 10), parseInt(minutes, 10), 0, 0);
-                                      return date;
+                                      try {
+                                        const [hours, minutes] = activeContact.heureRendezVous.split(':');
+                                        const hoursNum = parseInt(hours, 10);
+                                        const minutesNum = parseInt(minutes, 10);
+                                        
+                                        if (isNaN(hoursNum) || isNaN(minutesNum) || 
+                                            hoursNum < 0 || hoursNum > 23 || 
+                                            minutesNum < 0 || minutesNum > 59) {
+                                          console.warn("Heure invalide:", activeContact.heureRendezVous);
+                                          return new Date();
+                                        }
+                                        
+                                        const date = new Date();
+                                        date.setHours(hoursNum, minutesNum, 0, 0);
+                                        return date;
+                                      } catch (e) {
+                                        console.error("Erreur parsing heure:", e);
+                                        return new Date();
+                                      }
                                     })() : new Date()}
                                     onChange={(date) => {
-                                      if (date) {
+                                      if (date && isValid(date)) {
                                         handleEditContactInline({ 
                                           id: activeContact.id, 
                                           heureRendezVous: format(date, 'HH:mm') 

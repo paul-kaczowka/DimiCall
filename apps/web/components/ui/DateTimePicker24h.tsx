@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { CalendarIcon } from "lucide-react";
-import { format } from "date-fns";
+import { format, isValid } from "date-fns";
 import { fr } from "date-fns/locale";
 
 import { cn } from "@/lib/utils";
@@ -42,7 +42,7 @@ export function DateTimePicker24h({
   const hours = Array.from({ length: 24 }, (_, i) => i);
   
   const handleDateSelect = (selectedDate: Date | undefined) => {
-    if (selectedDate) {
+    if (selectedDate && isValid(selectedDate)) {
       const newDateToSet = date ? new Date(date) : new Date();
       newDateToSet.setFullYear(selectedDate.getFullYear());
       newDateToSet.setMonth(selectedDate.getMonth());
@@ -64,13 +64,19 @@ export function DateTimePicker24h({
     } else if (type === "minute") {
       newDateToSet.setMinutes(parseInt(value));
     }
-    setDate(newDateToSet);
+    if (isValid(newDateToSet)) {
+      setDate(newDateToSet);
+    } else {
+      console.error("Date invalide après modification de l'heure:", newDateToSet);
+    }
   };
 
   const handleConfirm = () => {
-    if (date) {
+    if (date && isValid(date)) {
       onDateTimeSelected(date);
       setIsOpen(false);
+    } else if (date) {
+      console.error("Tentative de confirmation avec une date invalide:", date);
     }
   };
   
@@ -92,7 +98,7 @@ export function DateTimePicker24h({
         aria-expanded={isOpen}
       >
         <CalendarIcon className="mr-2 h-4 w-4" />
-        {date ? (
+        {date && isValid(date) ? (
           format(date, "dd/MM/yyyy HH:mm", { locale: fr })
         ) : (
           <span>{buttonLabel}</span>

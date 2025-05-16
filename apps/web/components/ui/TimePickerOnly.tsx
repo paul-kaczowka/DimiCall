@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import * as React from 'react';
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { isValid } from 'date-fns';
 
 // ---------- utils start ----------
 /**
@@ -101,6 +102,11 @@ export function TimePickerOnly({
   }, [initialDate]);
 
   const handleDateChange = (newDate: Date, isMinuteSelection?: boolean) => {
+    if (!isValid(newDate)) {
+      console.error("Tentative de mise à jour avec une date invalide:", newDate);
+      return;
+    }
+    
     setCurrentDate(newDate);
     onChange?.(newDate);
 
@@ -110,7 +116,10 @@ export function TimePickerOnly({
     }
   };
   
-  const getSafeDate = () => currentDate ?? new Date(new Date().setHours(0,0,0,0));
+  const getSafeDate = () => {
+    const date = currentDate ?? new Date(new Date().setHours(0,0,0,0));
+    return isValid(date) ? date : new Date();
+  };
 
   const selectedHour = currentDate ? (hourCycle === 12 ? display12HourValue(currentDate.getHours()) : currentDate.getHours()) : null;
   const selectedMinute = currentDate ? currentDate.getMinutes() : null;
