@@ -391,7 +391,7 @@ const SimpleDateTimePicker = ({
 
 export const Ribbon = React.forwardRef<HTMLDivElement, RibbonProps>((
   { 
-    selectedContactEmail, 
+    selectedContactEmail,
     inputFileRef,
     handleFileSelectedForImport,
     isImportPending,
@@ -520,10 +520,13 @@ export const Ribbon = React.forwardRef<HTMLDivElement, RibbonProps>((
   },[onBookingCreated]); // Ajout de onBookingCreated aux dépendances
 
   const performCallAction = () => {
+    console.log('[Ribbon] performCallAction: autoSearchMode =', autoSearchMode);
+    console.log('[Ribbon] performCallAction: activeContact =', activeContact);
+
     if (activeContact && activeContact.phoneNumber && activeContact.id) {
       if (activeContact.id === contactInCallId) {
         toast.info("Un appel est déjà en cours pour ce contact.");
-        return;
+      return;
       }
       const formData = new FormData();
       formData.append('phoneNumber', activeContact.phoneNumber);
@@ -531,10 +534,13 @@ export const Ribbon = React.forwardRef<HTMLDivElement, RibbonProps>((
       startTransition(() => {
         callFormAction(formData);
         
+        console.log('[Ribbon] performCallAction: Dans startTransition, autoSearchMode =', autoSearchMode);
         // Si le mode de recherche automatique est activé, déclencher la recherche appropriée
         if (autoSearchMode === 'linkedin') {
+          console.log('[Ribbon] performCallAction: Appel de handleLinkedInSearch...');
           handleLinkedInSearch();
         } else if (autoSearchMode === 'google') {
+          console.log('[Ribbon] performCallAction: Appel de handleGoogleSearch...');
           handleGoogleSearch();
         }
       });
@@ -639,7 +645,7 @@ export const Ribbon = React.forwardRef<HTMLDivElement, RibbonProps>((
   const handleCalComRendezVous = async () => {
     if (!activeContact) {
         toast.info("Veuillez sélectionner un contact pour planifier un rendez-vous.");
-        return;
+      return;
     }
 
     try {
@@ -686,21 +692,27 @@ export const Ribbon = React.forwardRef<HTMLDivElement, RibbonProps>((
   const GOOGLE_WINDOW_NAME = "googleSearchWindow";
 
   const handleLinkedInSearch = () => {
+    console.log('[Ribbon] handleLinkedInSearch: autoSearchMode =', autoSearchMode);
+    console.log('[Ribbon] handleLinkedInSearch: activeContact =', activeContact);
     if (activeContact && activeContact.firstName && activeContact.lastName) {
       const query = encodeURIComponent(`${activeContact.firstName} ${activeContact.lastName}`);
-      // Ouvre dans une fenêtre nommée (réutilisée si elle existe)
+      console.log('[Ribbon] handleLinkedInSearch: Ouverture LinkedIn avec query =', query);
       window.open(`https://www.linkedin.com/search/results/people/?keywords=${query}`, LINKEDIN_WINDOW_NAME);
     } else {
+      console.warn('[Ribbon] handleLinkedInSearch: Conditions non remplies (contact, nom, prénom).');
       toast.info("Veuillez sélectionner un contact avec un nom et prénom pour la recherche LinkedIn.");
     }
   };
 
   const handleGoogleSearch = () => {
+    console.log('[Ribbon] handleGoogleSearch: autoSearchMode =', autoSearchMode);
+    console.log('[Ribbon] handleGoogleSearch: activeContact =', activeContact);
     if (activeContact && activeContact.firstName && activeContact.lastName) {
       const query = encodeURIComponent(`${activeContact.firstName} ${activeContact.lastName}`);
-      // Ouvre dans une fenêtre nommée (réutilisée si elle existe)
+      console.log('[Ribbon] handleGoogleSearch: Ouverture Google avec query =', query);
       window.open(`https://www.google.com/search?q=${query}`, GOOGLE_WINDOW_NAME);
     } else {
+      console.warn('[Ribbon] handleGoogleSearch: Conditions non remplies (contact, nom, prénom).');
       toast.info("Veuillez sélectionner un contact avec un nom et prénom pour la recherche Google.");
     }
   };
@@ -737,12 +749,12 @@ export const Ribbon = React.forwardRef<HTMLDivElement, RibbonProps>((
 
   return (
     <div ref={ref} className="flex flex-wrap sm:flex-nowrap items-stretch gap-1 md:gap-2 overflow-x-auto scrollbar-thin scrollbar-thumb-muted scrollbar-track-transparent">
-      <input 
-        type="file" 
+        <input 
+          type="file" 
         ref={inputFileRef as React.RefObject<HTMLInputElement>} 
-        onChange={handleFileSelectedForImport}
-        className="hidden"
-        accept=".csv, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel"
+          onChange={handleFileSelectedForImport}
+          className="hidden" 
+          accept=".csv, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel"
       />
 
       {/* Groupe 1: Appeler, Raccrocher */}
@@ -750,15 +762,7 @@ export const Ribbon = React.forwardRef<HTMLDivElement, RibbonProps>((
         <RibbonButton 
           label="Appeler"
           icon={Phone} 
-          onClick={() => {
-            if (activeContact && activeContact.id) {
-              const formData = new FormData();
-              formData.append('contactId', activeContact.id);
-              startTransition(() => {
-                callFormAction(formData);
-              });
-            }
-          }} 
+          onClick={performCallAction}
           disabled={!activeContact || (!!contactInCallId && contactInCallId === activeContact?.id) || isImportPending}
           tooltipContent="Appeler le contact sélectionné"
           className="flex-1 sm:flex-initial"
@@ -781,7 +785,7 @@ export const Ribbon = React.forwardRef<HTMLDivElement, RibbonProps>((
         />
       </div>
 
-      <RibbonSeparator />
+        <RibbonSeparator />
 
       {/* Groupe 2: Email, Rappel, Rendez-vous */}
       <div className="flex items-center gap-1 p-1 border border-muted rounded-md shadow-sm mb-1 sm:mb-0 w-full sm:w-auto">
@@ -830,12 +834,12 @@ export const Ribbon = React.forwardRef<HTMLDivElement, RibbonProps>((
           className="flex-1 sm:flex-initial"
         />
       </div>
-      
-      <RibbonSeparator />
+        
+        <RibbonSeparator />
 
       {/* Groupe 3: LinkedIn, Google - Ajout de l'encadrement */}
       <div className="flex items-center gap-1 p-1 border border-muted rounded-md shadow-sm mb-1 sm:mb-0 w-full sm:w-auto">
-        <RibbonButton
+        <RibbonButton 
           label="LinkedIn"
           icon={Linkedin}
           onClick={handleLinkedInSearch}
@@ -862,10 +866,10 @@ export const Ribbon = React.forwardRef<HTMLDivElement, RibbonProps>((
           tooltipContent="Rechercher le contact sur Google"
           className="flex-1 sm:flex-initial"
         />
-      </div>
+        </div>
 
-      <RibbonSeparator />
-      
+        <RibbonSeparator />
+
       {/* Groupe 4: Importer, Exporter, Tout Effacer */}
       <div className="flex items-center gap-1 p-1 border border-muted rounded-md shadow-sm w-full sm:w-auto">
         <RibbonButton 
@@ -967,6 +971,6 @@ export const Ribbon = React.forwardRef<HTMLDivElement, RibbonProps>((
     </div>
   );
 });
-Ribbon.displayName = "Ribbon";
+Ribbon.displayName = "Ribbon"; 
 
 export default Ribbon; 

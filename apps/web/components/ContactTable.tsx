@@ -48,7 +48,7 @@ import {
   Hourglass, 
   PhoneOutgoing
 } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { cn, formatPhoneNumber } from '@/lib/utils';
 
 // Définir les props pour ContactTable
 interface ContactTableProps {
@@ -198,7 +198,9 @@ export function ContactTable({ data, onEditContact, onActiveContactChange, scrol
       header: () => <IconHeader icon={Phone} text="Téléphone" />,
       cell: (info) => {
         const { onEditContact: metaOnEditContact } = (info.table.options.meta as TableMeta);
-        return <EditableCell {...info} onEditContact={metaOnEditContact} />;
+        const originalValue = info.getValue() as string | null | undefined;
+        const formattedValueNode = <span>{formatPhoneNumber(originalValue)}</span>; 
+        return <EditableCell {...info} displayValueOverride={formattedValueNode} onEditContact={metaOnEditContact} />;
       },
       size: 180,
     },
@@ -304,7 +306,7 @@ export function ContactTable({ data, onEditContact, onActiveContactChange, scrol
         const value = info.getValue() as string | null | undefined;
         // DEBUG: Log la valeur pour la cellule dureeAppel
         console.log(`[ContactTable dureeAppel cell] Contact ID: ${info.row.original.id}, Value from info.getValue(): ${value}`);
-        return <ReadOnlyCell value={value} />;
+        return <ReadOnlyCell value={value} emptyPlaceholder="N/A" />;
       },
       size: 150,
     },

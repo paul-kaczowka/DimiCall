@@ -467,6 +467,12 @@ export default function ContactsPage() {
         toast.info(`Lancement de l'appel pour ${nextContactToCall.firstName}...`);
         const callFormData = new FormData();
         callFormData.append('contactId', nextContactToCall.id);
+        
+        // Ajout du numéro de téléphone quand il est disponible
+        if (nextContactToCall.phoneNumber) {
+            callFormData.append('phoneNumber', nextContactToCall.phoneNumber);
+        }
+        
         callFormAction(callFormData);
         console.log(`[ContactsPage] KeyDown: Appel lancé pour ${nextContactToCall.firstName} (ID: ${nextContactToCall.id})`);
     } else {
@@ -679,14 +685,14 @@ export default function ContactsPage() {
             <AdbStatusBadge />
           </div>
           <div className="flex-grow w-full p-2 border rounded-lg border-border overflow-hidden">
-            <Ribbon 
-              ref={ribbonRef}
+      <Ribbon 
+        ref={ribbonRef}
               selectedContactEmail={activeContact?.email}
               inputFileRef={inputFileRef as React.RefObject<HTMLInputElement>}
-              handleFileSelectedForImport={handleFileSelectedForImport}
-              isImportPending={isImportPending}
-              isAutosaveSaving={isAutosaveSaving}
-              onRequestClearAllData={handleRequestClearAllData}
+        handleFileSelectedForImport={handleFileSelectedForImport}
+        isImportPending={isImportPending}
+        isAutosaveSaving={isAutosaveSaving}
+        onRequestClearAllData={handleRequestClearAllData}
               activeContact={activeContact}
               callFormAction={callFormAction}
               hangUpFormAction={hangUpFormAction}
@@ -716,16 +722,16 @@ export default function ContactsPage() {
           <div className='flex-grow'> 
             <div className="mb-2 sm:mb-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 sm:gap-4">
               <div className="w-full sm:w-auto">
-                <TableSearchBar
-                  columns={searchableColumns}
-                  initialSelectedColumnValue={selectedSearchColumn}
+          <TableSearchBar
+            columns={searchableColumns}
+            initialSelectedColumnValue={selectedSearchColumn}
                   initialSearchTerm={searchTerm}
                   onSearchChange={handleSearchChange}
                   className="w-full"
-                />
-              </div>
+          />
+          </div>
               <FunctionKeyStatusMappingGuide mappings={fnKeyMappings} className="mt-2 sm:mt-0 w-full sm:w-auto" />
-            </div>
+        </div>
             <div 
               ref={tableViewportRef} 
               className="overflow-auto"
@@ -736,18 +742,18 @@ export default function ContactsPage() {
                   <Loader2 className="h-12 w-12 animate-spin text-primary" />
                 </div>
               ) : (
-                <ContactTable
-                  data={filteredContacts}
-                  onEditContact={handleEditContactInline}
-                  onActiveContactChange={setActiveContact}
-                  scrollContainerRef={tableViewportRef}
+          <ContactTable
+            data={filteredContacts}
+            onEditContact={handleEditContactInline}
+            onActiveContactChange={setActiveContact}
+            scrollContainerRef={tableViewportRef}
                   isProcessingId={
                     isUpdateContactPending && activeContact && (!updateContactState.data || updateContactState.data.id !== activeContact.id) ? activeContact.id : null
                   }
                   error={updateContactState.success === false ? updateContactState.message : null}
                 />
-              )}
-            </div>
+          )}
+        </div>
           </div>
           
           <footer className="shrink-0 mt-auto pt-4 pb-2 text-center text-xs text-muted-foreground flex items-center justify-between">
@@ -757,7 +763,7 @@ export default function ContactsPage() {
               {isAutosaveSaving && <span className="ml-2"><Loader2 className="h-3 w-3 animate-spin inline-block" /> Sauvegarde auto...</span>}
             </div>
           </footer>
-        </main>
+      </main>
 
         <aside 
           ref={panelRef}
@@ -901,8 +907,8 @@ export default function ContactsPage() {
                                     handleEditContactInline({ id: activeContact.id, status: newStatus });
                                   }}
                                 />
-                              </div>
-                            </div>
+          </div>
+        </div>
                           </div>
                         </div>
                         <div className="py-1 group relative">
@@ -949,7 +955,7 @@ export default function ContactsPage() {
                                 }}
                               >
                                 {activeContact.source || "Source du contact"}
-                              </div>
+        </div>
                             </div>
                           </div>
                         </div>
@@ -1050,8 +1056,8 @@ export default function ContactsPage() {
                                   />
                                 </PopoverContent>
                               </Popover>
-                            </div>
-                          </div>
+        </div>
+      </div>
                         </div>
                         <div className="py-1 group relative">
                           <div className="flex items-start space-x-3">
@@ -1143,7 +1149,7 @@ export default function ContactsPage() {
                                   />
                                 </PopoverContent>
                               </Popover>
-                            </div>
+        </div>
                           </div>
                         </div>
                         <div className="py-1 group relative">
@@ -1354,26 +1360,26 @@ export default function ContactsPage() {
       )}
 
       {isClearConfirmOpen && (
-        <AlertDialog open={isClearConfirmOpen} onOpenChange={setIsClearConfirmOpen}>
-          <AlertDialogContent>
-            <AlertDialogHeader>
+      <AlertDialog open={isClearConfirmOpen} onOpenChange={setIsClearConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
               <AlertDialogTitle>Êtes-vous sûr?</AlertDialogTitle>
-              <AlertDialogDescription>
+            <AlertDialogDescription>
                 Cette action est irréversible et supprimera définitivement toutes les données des contacts.
                 Voulez-vous vraiment continuer ?
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
               <AlertDialogCancel onClick={() => setIsClearConfirmOpen(false)}>Annuler</AlertDialogCancel>
               <AlertDialogAction
                 onClick={confirmClearAllData}
                 className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               >
                 Tout effacer
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       )}
     </div>
   );

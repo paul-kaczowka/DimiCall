@@ -38,6 +38,7 @@ const parseCustomDateString = (dateString: string, cellType: 'date' | 'datetime'
 
 interface EditableCellProps extends CellContext<Contact, unknown> {
   onEditContact: (contactUpdate: Partial<Contact> & { id: string }) => void;
+  displayValueOverride?: React.ReactNode;
 }
 
 export const EditableCell: React.FC<EditableCellProps> = React.memo(({
@@ -45,6 +46,7 @@ export const EditableCell: React.FC<EditableCellProps> = React.memo(({
   row,
   column,
   onEditContact,
+  displayValueOverride,
 }) => {
   const initialValue = getValue() as string | null | undefined;
 
@@ -285,43 +287,43 @@ export const EditableCell: React.FC<EditableCellProps> = React.memo(({
     }
 
     return (
-      <Popover 
-        open={isPopoverOpen} 
-        onOpenChange={(open) => {
-          if (open) {
-            setPickerValue(initialDateForPicker); 
-          } else {
-            // Simplification du comportement pour qu'il soit cohérent avec les sélecteurs directs
-            if (cellType === 'date' || cellType === 'datetime' || cellType === 'time') {
-              // La sauvegarde se fait maintenant lors de la sélection et non à la fermeture du popover
-              // pour plus de cohérence et éviter les bugs
-            }
-          }
-          setIsPopoverOpen(open);
-        }}
-      >
+      <Popover open={isPopoverOpen} onOpenChange={setIsPopoverOpen}>
         <PopoverTrigger asChild>
-          <Button 
-            variant="ghost" 
-            className="p-2 h-full min-h-[30px] flex items-center justify-center border border-transparent hover:border-input hover:bg-muted/50 rounded-sm max-w-full w-full font-normal text-left whitespace-normal h-auto min-h-[2rem] leading-snug data-[state=open]:bg-accent data-[state=open]:text-accent-foreground"
-            title={
-              currentValue && !hasErrorParsing ? 
-                `Modifier: ${ (cellType === 'date' || cellType === 'datetime' || cellType === 'time') && initialDateForPicker ? 
-                                (cellType === 'time' ? formatDateFns(initialDateForPicker, 'HH:mm', { locale: fr }) : formatDateFns(initialDateForPicker, cellType === 'date' ? 'dd/MM/yyyy' : 'dd/MM/yyyy HH:mm', { locale: fr })) 
-                                : String(currentValue ?? '')}` 
-              : (cellType ==='time' ? "Choisir une heure" 
-                : (cellType === 'date' ? (initialDateForPicker ? formatDateFns(initialDateForPicker, 'dd/MM/yyyy', {locale: fr}) : "Choisir une date")
-                  : (cellType === 'datetime' ? "Choisir une date et heure" 
-                    : "Modifier")))
-            }
-            disabled={hasErrorParsing}
+          <Button
+            variant="ghost"
+            className="w-full h-full justify-start font-normal p-2 text-left focus:ring-1 focus:ring-ring focus:ring-offset-0"
+            onClick={() => {
+              if (!isPopoverOpen) {
+                let dateToInitPicker: Date | undefined = undefined;
+                if (currentValue) {
+                  try {
+                    if (cellType === 'date' || cellType === 'datetime') {
+                      const preProcessedForPicker = parseCustomDateString(currentValue as string, cellType as 'date' | 'datetime');
+                      const parsedForPicker = parseISO(preProcessedForPicker);
+                      if (isValidDate(parsedForPicker)) dateToInitPicker = parsedForPicker;
+                    } else if (cellType === 'time') {
+                      const timePartsForPicker = (currentValue as string).split(':');
+                      if (timePartsForPicker.length >= 2) {
+                        const tempDateForPicker = new Date();
+                        tempDateForPicker.setHours(parseInt(timePartsForPicker[0], 10), parseInt(timePartsForPicker[1], 10), timePartsForPicker[2] ? parseInt(timePartsForPicker[2], 10) : 0, 0);
+                        if (isValidDate(tempDateForPicker)) dateToInitPicker = tempDateForPicker;
+                      } else {
+                        const parsedFromISOForPicker = parseISO(currentValue as string);
+                        if (isValidDate(parsedFromISOForPicker)) dateToInitPicker = parsedFromISOForPicker;
+                      }
+                    }
+                  } catch (e) {
+                    console.warn(`[EditableCell] PopoverTrigger: Error parsing initial date for picker: ${currentValue}`, e);
+                  }
+                }
+                setPickerValue(dateToInitPicker || defaultPickerDate);
+              }
+            }}
           >
-            {(cellType === 'date' && initialDateForPicker) 
-              ? formatDateFns(initialDateForPicker, 'dd/MM/yyyy', { locale: fr })
-              : displayContent}
+            {displayValueOverride && !isPopoverOpen ? displayValueOverride : displayContent}
           </Button>
         </PopoverTrigger>
-        <PopoverContent className="w-auto p-0">
+        <PopoverContent className="w-auto p-0" align="start">
           {pickerComponent}
         </PopoverContent>
       </Popover>
@@ -329,12 +331,15 @@ export const EditableCell: React.FC<EditableCellProps> = React.memo(({
   }
   
   return (
-    <div
-      onClick={() => cellType === 'text' && !textOnlyIfEmptyColumns.includes(column.id) && setIsEditingText(true)}
-      className="p-2 h-full min-h-[30px] flex items-center border border-transparent hover:border-input hover:bg-muted/50 rounded-sm max-w-full w-full cursor-pointer"
-      title={(cellType === 'text' && !textOnlyIfEmptyColumns.includes(column.id)) ? "Cliquez pour modifier" : undefined}
+    <div 
+      className="p-2 h-full min-h-[30px] flex items-center cursor-pointer w-full" 
+      onClick={() => {
+        if (cellType === 'text' && !isEditingText) {
+          setIsEditingText(true);
+        }
+      }}
     >
-      {displayContent}
+      {displayValueOverride && !isEditingText ? displayValueOverride : displayContent}
     </div>
   );
 });

@@ -6,12 +6,20 @@ import { contactSchema, Contact } from '@/lib/schemas/contact';
 import { revalidatePath } from 'next/cache'; // Importer revalidatePath
 import { parse as parseDateFns, differenceInSeconds } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { toast } from 'react-toastify';
 
 // Schéma pour la validation du numéro de téléphone et de l'ID du contact
 const callActionSchema = z.object({
-  phoneNumber: z.string().min(1, { message: 'Le numéro de téléphone est requis.' }),
+  phoneNumber: z.preprocess(
+    (val) => (val === null ? undefined : val),
+    z.string().optional()
+  ), 
   contactId: z.string().min(1, { message: 'L\'ID du contact est requis.' }),
+}).refine(data => {
+  // Au moins contactId doit être présent
+  return !!data.contactId;
+}, {
+  message: "L'ID du contact est obligatoire.",
+  path: ['contactId']
 });
 
 // Schéma pour la validation du format d'exportation
@@ -32,9 +40,12 @@ export async function callAction(prevState: ActionState<Contact | null>, formDat
     phoneNumber: formData.get('phoneNumber'),
     contactId: formData.get('contactId'),
   };
+  console.log('[Server Action callAction] Received rawFormData:', rawFormData);
+
   const validationResult = callActionSchema.safeParse(rawFormData);
 
   if (!validationResult.success) {
+    console.error('[Server Action callAction] Validation failed:', validationResult.error.flatten().fieldErrors);
     return {
       success: false,
       message: 'Données d\'appel invalides.',
@@ -43,26 +54,93 @@ export async function callAction(prevState: ActionState<Contact | null>, formDat
     };
   }
 
-  const { phoneNumber: validatedPhoneNumber, contactId: validatedContactId } = validationResult.data;
-  console.log(`[Server Action] Tentative d'appel du numéro : ${validatedPhoneNumber} pour contact ID: ${validatedContactId} via l'API backend.`);
+  const { phoneNumber: providedPhoneNumber, contactId: validatedContactId } = validationResult.data;
+  console.log('[Server Action callAction] Validation successful. Provided PhoneNumber:', providedPhoneNumber, 'Validated ContactID:', validatedContactId);
+  
+  let phoneNumberToCall = providedPhoneNumber as string | undefined;
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+  
+  if (!phoneNumberToCall) {
+    console.log(`[Server Action callAction] PhoneNumber not provided. Attempting to fetch from API for contact ID: ${validatedContactId}`);
+    try {
+      const contactResponse = await fetch(`${apiUrl}/contacts/${validatedContactId}`);
+      if (!contactResponse.ok) {
+        const errorText = await contactResponse.text();
+        console.error(`[Server Action callAction] Failed to fetch contact. Status: ${contactResponse.status}, Response: ${errorText}`);
+        return {
+          success: false,
+          message: `Impossible de récupérer les détails du contact (ID: ${validatedContactId})`,
+          data: null,
+        };
+      }
+      const contactData = await contactResponse.json();
+      phoneNumberToCall = contactData.phoneNumber;
+      console.log(`[Server Action callAction] Fetched contact data:`, contactData, `PhoneNumber to call: ${phoneNumberToCall}`);
+      
+      if (!phoneNumberToCall) {
+        console.error(`[Server Action callAction] Contact (ID: ${validatedContactId}) has no phone number.`);
+        return {
+          success: false,
+          message: `Ce contact (ID: ${validatedContactId}) n'a pas de numéro de téléphone enregistré.`,
+          data: null,
+        };
+      }
+    } catch (error) {
+      console.error("[Server Action callAction] Error fetching contact:", error);
+      return {
+        success: false,
+        message: "Erreur lors de la récupération des informations du contact.",
+        data: null,
+      };
+    }
+  }
+
+  // Nettoyage final du numéro avant de l'envoyer à l'API
+  if (phoneNumberToCall) {
+    const originalNumberForLog = phoneNumberToCall;
+    // Supprimer tout ce qui n'est pas un chiffre ou '+'
+    phoneNumberToCall = phoneNumberToCall.replace(/[^0-9+]/g, '');
+    // S'il ne commence pas par +, et qu'il a la bonne longueur pour un numéro français sans le 0 initial (9 chiffres),
+    // ou un numéro français avec le 0 initial (10 chiffres), on peut tenter de le préfixer avec +33
+    if (!phoneNumberToCall.startsWith('+')) {
+        if (phoneNumberToCall.length === 10 && phoneNumberToCall.startsWith('0')) {
+            phoneNumberToCall = `+33${phoneNumberToCall.substring(1)}`;
+        }
+        // Autres logiques de normalisation E.164 pourraient être ajoutées ici si nécessaire
+    }
+    console.log(`[Server Action callAction] Original phone number: '${originalNumberForLog}', Cleaned/Formatted for API: '${phoneNumberToCall}'`);
+  }
+
+  if (!phoneNumberToCall) { // Re-vérifier après nettoyage/formatage potentiel
+    console.error(`[Server Action callAction] phoneNumberToCall is still null/empty after cleanup for contact ID: ${validatedContactId}`);
+    return {
+      success: false,
+      message: `Numéro de téléphone invalide ou manquant pour le contact ${validatedContactId} après nettoyage.`,
+      data: null,
+    };
+  }
+  
+  console.log(`[Server Action callAction] Attempting to call number: ${phoneNumberToCall} for contact ID: ${validatedContactId} via backend API.`);
 
   try {
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
     const apiCallResponse = await fetch(`${apiUrl}/call`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ phone_number: validatedPhoneNumber }), // L'API /call attend juste phone_number
+      body: JSON.stringify({ phone_number: phoneNumberToCall }), // L'API /call attend juste phone_number
     });
 
     if (!apiCallResponse.ok) {
-      let errorMessage = `Échec de l'appel vers ${validatedPhoneNumber}.`;
+      let errorMessage = `Échec de l'appel vers ${phoneNumberToCall}.`;
       try {
         const errorData = await apiCallResponse.json();
         errorMessage = errorData.detail || `Erreur API (/call) (${apiCallResponse.status}): ${apiCallResponse.statusText}`;
       } catch {
-        errorMessage = `Erreur API (/call) (${apiCallResponse.status}): ${apiCallResponse.statusText}. La réponse n'est pas au format JSON.`;
+        // LOG AJOUTÉ pour capturer le texte brut si la réponse n'est pas JSON
+        const errorText = await apiCallResponse.text().catch(() => "Impossible de lire la réponse d'erreur.");
+        console.error(`[Server Action callAction] API /call error response (not JSON): ${errorText}`);
+        errorMessage = `Erreur API (/call) (${apiCallResponse.status}): ${apiCallResponse.statusText}. Réponse brute: ${errorText.substring(0, 100)}`;
       }
       console.error(`[Server Action] Erreur de l'API FastAPI lors de l'appel: ${errorMessage}`);
       return {
@@ -76,10 +154,10 @@ export async function callAction(prevState: ActionState<Contact | null>, formDat
     const callTimeISO = callResultData.call_time; // call_time est retourné par l'API /call en ISO UTC
 
     if (!callTimeISO || typeof callTimeISO !== 'string') {
-        console.error("[Server Action] call_time manquant ou invalide dans la réponse de l'API /call", callResultData);
+        console.error("[Server Action callAction] call_time manquant ou invalide dans la réponse de l'API /call:", callResultData);
         return {
             success: false,
-            message: "Réponse invalide de l'API d'appel (call_time manquant).",
+            message: "Réponse invalide de l'API d'appel (call_time manquant ou invalide).",
             data: null,
         };
     }
@@ -121,11 +199,13 @@ export async function callAction(prevState: ActionState<Contact | null>, formDat
                 const errorUpdateData = await updateResponse.json();
                 updateErrorMessage = errorUpdateData.detail || `Erreur API (PATCH /contacts) (${updateResponse.status}): ${updateResponse.statusText}`;
             } catch {
-                updateErrorMessage = `Erreur API (PATCH /contacts) (${updateResponse.status}): ${updateResponse.statusText}. La réponse n'est pas au format JSON.`;
+                const errorText = await updateResponse.text().catch(() => "Impossible de lire la réponse d'erreur de la MAJ contact.");
+                console.error(`[Server Action updateContactAction] API /contacts/PATCH error response (not JSON): ${errorText}`);
+                updateErrorMessage = `Erreur API (${updateResponse.status}): ${updateResponse.statusText}. La réponse n'est pas au format JSON. Réponse brute: ${errorText.substring(0,100)}`;
             }
-            console.error(`[Server Action] Erreur de l'API FastAPI lors de la mise à jour du contact (dans callAction): ${updateErrorMessage}`);
+            console.error(`[Server Action] Erreur de l'API FastAPI lors de la mise à jour du contact: ${updateErrorMessage}`);
             return {
-                success: false, // Ou true avec un message partiel ?
+                success: false,
                 message: `Appel initié, mais échec de la mise à jour du contact: ${updateErrorMessage}`,
                 data: null,
             };
@@ -135,7 +215,7 @@ export async function callAction(prevState: ActionState<Contact | null>, formDat
         console.log("[Server Action] Contact mis à jour avec succès après l'appel (dans callAction).", updatedContactData);
         return {
             success: true,
-            message: `Appel vers ${validatedPhoneNumber} initié et contact mis à jour.`,
+            message: `Appel vers ${phoneNumberToCall} initié et contact mis à jour.`,
             data: updatedContactData,
         };
 
@@ -579,8 +659,9 @@ export async function hangUpCallAction(prevState: ActionState<Contact | null>, f
     const fetchContactResponse = await fetch(`${apiUrl}/contacts/${contactId}`);
     if (!fetchContactResponse.ok) {
       const errorData = await fetchContactResponse.json().catch(() => ({ detail: fetchContactResponse.statusText }));
+      const errorText = await fetchContactResponse.text().catch(() => "Impossible de lire la réponse d'erreur du fetch contact.");
       const errorMessage = errorData.detail || `Impossible de récupérer le contact ${contactId}.`;
-      console.error(`[Server Action] Erreur fetch contact ${contactId}: ${errorMessage}`);
+      console.error(`[Server Action hangUpCallAction] Erreur fetch contact ${contactId}: ${errorMessage}. Réponse brute: ${errorText}`);
       return { success: false, message: `Impossible de récupérer le contact ${contactId} (${fetchContactResponse.status}) pour calculer la durée.`, data: null };
     }
     const contactData: Contact = await fetchContactResponse.json();
@@ -618,6 +699,7 @@ export async function hangUpCallAction(prevState: ActionState<Contact | null>, f
       }
     } else {
         console.warn(`[Server Action] dateAppel ou heureAppel manquant pour contact ${contactId}. Durée non calculée.`);
+        dureeAppelFormatted = "N/A"; // Explicitement marquer qu'aucune durée n'est calculable
     }
     
     console.log(`[Server Action] Commande ADB pour raccrocher l'appel (contact ID: ${contactId}) - Appel de l'API`);
@@ -631,8 +713,9 @@ export async function hangUpCallAction(prevState: ActionState<Contact | null>, f
 
     if (!hangUpResponse.ok) {
       const errorHangUpData = await hangUpResponse.json().catch(() => ({ detail: hangUpResponse.statusText }));
+      const hangUpErrorText = await hangUpResponse.text().catch(() => "Impossible de lire la réponse d'erreur du hangup.");
       const hangUpErrorMessage = errorHangUpData.detail || `Échec de la commande de raccrochage pour ${contactId}.`;
-      console.error(`[Server Action] Erreur API raccrochage ${contactId}: ${hangUpErrorMessage}`);
+      console.error(`[Server Action hangUpCallAction] Erreur API raccrochage ${contactId}: ${hangUpErrorMessage}. Réponse brute: ${hangUpErrorText}`);
       // Le message d'erreur sera propagé au client via la valeur de retour de l'action.
       // Le useEffect dans page.tsx s'occupera d'afficher le toast.
       // toast.error(`Erreur lors de la tentative de raccrochage via ADB: ${hangUpErrorMessage}`); // SUPPRIMÉ
@@ -660,8 +743,9 @@ export async function hangUpCallAction(prevState: ActionState<Contact | null>, f
 
     if (!updateResponse.ok) {
       const errorUpdateData = await updateResponse.json().catch(() => ({ detail: updateResponse.statusText }));
+      const updateErrorText = await updateResponse.text().catch(() => "Impossible de lire la réponse d'erreur de la MAJ contact.");
       const updateErrorMessage = errorUpdateData.detail || `Échec de la mise à jour de la durée pour ${contactId}.`;
-      console.error(`[Server Action] Erreur màj contact (durée) ${contactId}: ${updateErrorMessage}`);
+      console.error(`[Server Action hangUpCallAction] Erreur màj contact (durée) ${contactId}: ${updateErrorMessage}. Réponse brute: ${updateErrorText}`);
       return { success: false, message: `Appel raccroché (simulé), mais échec de la mise à jour de la durée pour ${contactId} (${updateResponse.status}).`, data: null };
     }
     const updatedContactData = await updateResponse.json();
