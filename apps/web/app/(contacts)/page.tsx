@@ -6,7 +6,6 @@ import { format, parseISO } from 'date-fns';
 import { Ribbon } from '@/components/Ribbon';
 import { ContactTable } from '@/components/ContactTable';
 import { TableSearchBar, type SearchableColumn } from '@/components/ui/TableSearchBar';
-import { ScrollProgressRadialChart } from '@/components/ui/ScrollProgressRadialChart';
 import { useAutosaveFile } from '@/hooks/useAutosaveFile';
 import { toast } from 'react-toastify';
 import { importContactsAction, updateContactAction, clearAllDataAction, callAction, hangUpCallAction } from '@/app/actions';
@@ -102,7 +101,6 @@ export default function ContactsPage() {
     initialActionState as ActionState<ContactAppType | null>
   );
   const [isProcessingFnKey, setIsProcessingFnKey] = useState(false);
-  const [statusCompletionPercentage, setStatusCompletionPercentage] = useState(0);
   const inputFileRef = useRef<HTMLInputElement>(null);
   const ribbonRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -366,16 +364,6 @@ export default function ContactsPage() {
     });
   }, [contacts, searchTerm, selectedSearchColumn]);
 
-  useEffect(() => {
-    if (filteredContacts.length === 0) {
-      setStatusCompletionPercentage(0);
-      return;
-    }
-    const contactsWithStatus = filteredContacts.filter(contact => contact.status && contact.status.trim() !== '').length;
-    const percentage = (contactsWithStatus / filteredContacts.length) * 100;
-    setStatusCompletionPercentage(percentage);
-  }, [filteredContacts]);
-
   const handleRequestClearAllData = () => {
     setIsClearConfirmOpen(true);
   };
@@ -507,15 +495,7 @@ export default function ContactsPage() {
     if (!container) return;
 
     const handleScroll = () => {
-      const { scrollTop, scrollHeight, clientHeight } = container;
-      const isScrollable = scrollHeight > clientHeight;
-      let percentage = 0;
-      if (isScrollable) {
-        percentage = (scrollTop / (scrollHeight - clientHeight)) * 100;
-      } else if (scrollHeight > 0 && clientHeight >= scrollHeight) {
-        percentage = 100;
-      }
-      setStatusCompletionPercentage(Math.max(0, Math.min(percentage, 100)));
+      // On supprime le code qui mettait à jour statusCompletionPercentage
     };
 
     container.addEventListener('scroll', handleScroll);
@@ -743,7 +723,6 @@ export default function ContactsPage() {
               {autosaveFileHandle && <span className="ml-2 text-green-600">(Autosave activé)</span>}
               {isAutosaveSaving && <span className="ml-2"><Loader2 className="h-3 w-3 animate-spin inline-block" /> Sauvegarde auto...</span>}
             </div>
-            <ScrollProgressRadialChart scrollPercentage={statusCompletionPercentage} />
           </footer>
         </main>
 
