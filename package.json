@@ -1,0 +1,13 @@
+{
+  "name": "contacts-monorepo",
+  "private": true,
+  "packageManager": "pnpm@10.10.0",
+  "scripts": {
+    "dev": "concurrently \"pnpm --filter web dev\" \"pnpm --filter api dev\"",
+    "build": "pnpm --filter web build && pnpm --filter api build"
+  },
+  "devDependencies": {
+    "@types/papaparse": "^5.3.16",
+    "concurrently": "^9.1.2"
+  }
+}
