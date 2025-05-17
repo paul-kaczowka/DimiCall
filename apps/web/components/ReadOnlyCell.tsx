@@ -5,7 +5,10 @@ interface ReadOnlyCellProps {
   emptyPlaceholder?: string;
 }
 
-export const ReadOnlyCell: React.FC<ReadOnlyCellProps> = ({ value, emptyPlaceholder = 'Vide' }) => {
+export const ReadOnlyCell: React.FC<ReadOnlyCellProps> = React.memo(({
+  value,
+  emptyPlaceholder = 'Vide',
+}) => {
   return (
     <div className="p-2 h-full min-h-[30px] flex items-center w-full">
       {value ? (
@@ -15,6 +18,6 @@ export const ReadOnlyCell: React.FC<ReadOnlyCellProps> = ({ value, emptyPlacehol
       )}
     </div>
   );
-};
+});
 
 ReadOnlyCell.displayName = 'ReadOnlyCell'; 

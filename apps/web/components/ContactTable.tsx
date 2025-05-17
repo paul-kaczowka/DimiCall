@@ -447,6 +447,7 @@ export function ContactTable({ data, onEditContact, onActiveContactChange, scrol
               display: 'grid',
               height: `${rowVirtualizer.getTotalSize()}px`,
               position: 'relative',
+              contain: 'paint',
             }}
           >
             {/* Affichage conditionnel des messages de chargement/état */}

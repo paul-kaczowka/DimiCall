@@ -50,6 +50,16 @@ import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover
 import { TimePickerOnly } from '@/components/ui/TimePickerOnly';
 import { fr } from 'date-fns/locale';
 
+// Au début du fichier, sous les imports, ajouter l'extension de Window
+declare global {
+  interface Window {
+    _nextContactId?: string;
+    _nextContactName?: string;
+    _nextContactPhone?: string;
+    _currentSelectedContactId?: string; // Pour suivre le contact actuellement sélectionné
+  }
+}
+
 // Définition du mapping Touche Fn <-> Statut
 const fnKeyMappings: StatusMapping[] = [
   { keyName: 'F2', statusName: 'Mauvais num' },
@@ -121,7 +131,6 @@ export default function ContactsPage() {
     hangUpCallAction,
     initialActionState as ActionState<ContactAppType | null>
   );
-  const [isProcessingFnKey, setIsProcessingFnKey] = useState(false);
   const inputFileRef = useRef<HTMLInputElement>(null);
   const ribbonRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -392,130 +401,243 @@ export default function ContactsPage() {
   const confirmClearAllData = () => {
     setIsClearConfirmOpen(false);
     startTransition(async () => {
-      try {
-        const result = await clearAllDataAction();
-        if (result.success) {
-          toast.success(result.message || "Toutes les données ont été effacées.");
-          fetchAndSetContacts();
-          setActiveContact(null);
-          if (autosaveFileHandle) {
-            resetFileHandle();
-            toast.info("La session d'autosave a été réinitialisée.");
-          }
-        } else {
-          toast.error(result.message || "Erreur lors de la suppression des données.");
+      const result = await clearAllDataAction();
+      if (result.success) {
+        toast.success(result.message || "Toutes les données ont été effacées.");
+        fetchAndSetContacts();
+        setActiveContact(null);
+        if (autosaveFileHandle) {
+          resetFileHandle();
+          toast.info("La session d'autosave a été réinitialisée.");
         }
-      } catch (error) {
-        console.error("[ContactsPage] Erreur lors de l'appel à clearAllDataAction:", error);
-        toast.error("Erreur technique lors de la suppression des données.");
+      } else {
+        toast.error(result.message || "Erreur lors de la suppression des données.");
       }
     });
   };
 
-  const mainFnKeyActionLogic = useCallback(async (event: KeyboardEvent) => {
+  const mainFnKeyActionLogic = useCallback((event: KeyboardEvent) => {
     const { key } = event;
-    console.log(`[ContactsPage] KeyDown: Touche reçue ${key}. Contact actif: ${activeContact?.firstName}, ID: ${activeContact?.id}`);
+    console.log(`[TouchesFn] Touche traitée: ${key}. Contact actif: ${activeContact?.firstName}`);
 
     const mapping = fnKeyMappings.find(m => m.keyName === key);
     if (!mapping) {
-        console.warn(`[ContactsPage] KeyDown: Pas de mapping trouvé pour la touche ${key}.`);
+        console.warn(`[TouchesFn] Pas de mapping pour la touche ${key}`);
         return;
     }
 
-    const contactToProcess = activeContact; 
-
-    if (!contactToProcess || !contactToProcess.id) {
-        toast.info("Veuillez d'abord sélectionner un contact valide.");
-        console.warn("[ContactsPage] KeyDown: Pas de contact actif ou ID de contact actif manquant au début du traitement.", { contactToProcess });
+    if (!activeContact || !activeContact.id) {
+        toast.info("Veuillez d'abord sélectionner un contact valide");
         return;
     }
-    console.log(`[ContactsPage] KeyDown: Traitement de ${key} pour le contact: ${contactToProcess.firstName} (ID: ${contactToProcess.id})`);
 
-    const currentContactId = contactToProcess.id;
-    const currentContactFirstName = contactToProcess.firstName;
+    console.log(`[TouchesFn DEBUG] Contact actif au début: ID=${activeContact.id}, Nom=${activeContact.firstName}`);
+
+    // Capturer toutes les données nécessaires immédiatement
+    const currentContactId = activeContact.id;
+    const currentContactFirstName = activeContact.firstName;
     const newStatus = mapping.statusName;
-
-    const updatedContactAfterStatus = await handleEditContactInline({ id: currentContactId, status: newStatus });
-
-    if (!updatedContactAfterStatus) {
-        toast.error(`Échec de la mise à jour du statut "${newStatus}" pour ${currentContactFirstName}.`);
-        console.error(`[ContactsPage] KeyDown: La mise à jour du statut a échoué pour le contact ID ${currentContactId}.`);
-        return; 
-    }
-    toast.success(`Statut "${newStatus}" appliqué à ${currentContactFirstName}.`);
-    console.log(`[ContactsPage] KeyDown: Statut "${newStatus}" appliqué. Données du contact mises à jour:`, updatedContactAfterStatus);
-
-    const currentIndexInFiltered = filteredContacts.findIndex(c => c.id === currentContactId);
-    let nextContactToCall: ContactAppType | null = null;
-
-    if (currentIndexInFiltered !== -1 && currentIndexInFiltered < filteredContacts.length - 1) {
-        nextContactToCall = filteredContacts[currentIndexInFiltered + 1];
-    } else {
-        const reason = currentIndexInFiltered === -1 ? 
-            `Contact ${currentContactFirstName} (ID: ${currentContactId}) non trouvé dans la liste filtrée après mise à jour (longueur: ${filteredContacts.length}).` :
-            "C'était le dernier contact de la liste.";
-        toast.info(reason);
-        console.log(`[ContactsPage] KeyDown: ${reason}`);
-        return; 
-    }
-
-    if (nextContactToCall && nextContactToCall.id) {
-        setActiveContact(nextContactToCall); 
-        toast.success(`Passage au contact suivant: ${nextContactToCall.firstName}`);
-        console.log(`[ContactsPage] KeyDown: Passage au contact suivant: ${nextContactToCall.firstName} (ID: ${nextContactToCall.id})`);
-
-        toast.info(`Lancement de l'appel pour ${nextContactToCall.firstName}...`);
-        const callFormData = new FormData();
-        callFormData.append('contactId', nextContactToCall.id);
+    
+    // *** ÉTAPE 1: Raccrocher l'appel en cours ***
+    const hangUpCurrentCall = (onDone: () => void) => {
+      console.log(`[TouchesFn] Étape 1: Vérification d'appel en cours`);
+      
+      if (!contactInCallId) {
+        console.log('[TouchesFn] Aucun appel en cours, passage à l\'étape suivante');
+        onDone(); // Passer directement à l'étape suivante
+        return;
+      }
+      
+      console.log(`[TouchesFn] Raccrochage de l'appel (ID: ${contactInCallId})`);
+      
+      const hangUpFormData = new FormData();
+      hangUpFormData.append('contactId', contactInCallId);
+      hangUpFormAction(hangUpFormData);
+      
+      toast.info(`Raccrochage de l'appel en cours...`);
+      
+      // Attendre un court moment avant de passer à l'étape suivante
+      setTimeout(onDone, 800);
+    };
+    
+    // *** ÉTAPE 2: Appliquer le statut ***
+    const applyStatusToContact = (onDone: () => void) => {
+      console.log(`[TouchesFn] Étape 2: Application du statut "${newStatus}" au contact ${currentContactId}`);
+      
+      // Mise à jour côté serveur
+      const statusFormData = new FormData();
+      statusFormData.append('contactId', currentContactId);
+      statusFormData.append('status', newStatus);
+      
+      // Envelopper l'appel d'action dans startTransition
+      startTransition(() => {
+        updateContactFormAction(statusFormData);
         
-        // Ajout du numéro de téléphone quand il est disponible
-        if (nextContactToCall.phoneNumber) {
-            callFormData.append('phoneNumber', nextContactToCall.phoneNumber);
+        // Mise à jour locale immédiate
+        setContacts(prevContacts => prevContacts.map(contact => 
+          contact.id === currentContactId 
+            ? {...contact, status: newStatus}
+            : contact
+        ));
+        
+        if (activeContact?.id === currentContactId) {
+          setActiveContact({...activeContact, status: newStatus});
+        }
+        
+        toast.success(`Statut "${newStatus}" appliqué à ${currentContactFirstName}`);
+        
+        // Passer à l'étape suivante après un court délai
+        setTimeout(onDone, 500);
+      });
+    };
+    
+    // *** ÉTAPE 3: Trouver et sélectionner le contact suivant ***
+    const selectNextContact = (onDone: (id: string, name: string, phone?: string | null) => void) => {
+      console.log(`[TouchesFn] Étape 3: Recherche du contact suivant`);
+      
+      // Trouver l'index actuel
+      const currentIndex = filteredContacts.findIndex(c => c.id === currentContactId);
+      console.log(`[TouchesFn] Index actuel: ${currentIndex}, Total contacts: ${filteredContacts.length}`);
+      
+      if (currentIndex === -1 || currentIndex >= filteredContacts.length - 1) {
+        const reason = currentIndex === -1 
+          ? `Le contact actif n'a pas été trouvé dans la liste` 
+          : `C'était le dernier contact de la liste`;
+          
+        console.log(`[TouchesFn] Pas de contact suivant: ${reason}`);
+        toast.info(reason);
+        return; // Fin de la séquence
+      }
+      
+      // Obtenir le contact suivant
+      const nextContact = filteredContacts[currentIndex + 1];
+      if (!nextContact || !nextContact.id) {
+        console.error(`[TouchesFn] Contact suivant invalide`);
+        toast.error(`Données du contact suivant invalides`);
+        return; // Fin de la séquence
+      }
+      
+      const nextContactId = nextContact.id;
+      const nextContactName = nextContact.firstName || 'Contact';
+      const nextContactPhone = nextContact.phoneNumber;
+      
+      console.log(`[TouchesFn] Contact suivant trouvé: ${nextContactName} (ID: ${nextContactId})`);
+      
+      // Mettre à jour le contact actif dans l'interface
+      startTransition(() => {
+        setActiveContact(nextContact);
+        toast.success(`Passage au contact: ${nextContactName}`);
+        
+        // Laisser l'interface se mettre à jour avant d'appeler le contact
+        setTimeout(() => {
+          if (onDone) onDone(nextContactId, nextContactName, nextContactPhone);
+        }, 500);
+      });
+    };
+    
+    // *** ÉTAPE 4: Appeler le contact suivant ***
+    const callContact = (contactId: string, contactName: string, contactPhone?: string | null) => {
+      console.log(`[TouchesFn] Étape 4: Appel du contact ${contactName} (ID: ${contactId})`);
+      
+      if (!contactId) {
+        console.error(`[TouchesFn] ID du contact manquant pour l'appel`);
+        toast.error(`Impossible d'appeler le contact: ID manquant`);
+        return;
+      }
+      
+      // Envelopper l'appel d'action dans startTransition
+      startTransition(() => {
+        const callFormData = new FormData();
+        callFormData.append('contactId', contactId);
+        
+        if (contactPhone) {
+          console.log(`[TouchesFn] Numéro utilisé: ${contactPhone}`);
+          callFormData.append('phoneNumber', contactPhone);
         }
         
         callFormAction(callFormData);
-        console.log(`[ContactsPage] KeyDown: Appel lancé pour ${nextContactToCall.firstName} (ID: ${nextContactToCall.id})`);
-    } else {
-         console.warn(`[ContactsPage] KeyDown: nextContactToCall est nul ou n'a pas d'ID. Index actuel: ${currentIndexInFiltered}, nextContact:`, nextContactToCall);
-    }
-  }, [activeContact, contacts, filteredContacts, fnKeyMappings, handleEditContactInline, callFormAction, setActiveContact, setContacts]);
+        toast.info(`Appel en cours pour ${contactName}...`);
+        
+        console.log(`[TouchesFn] Séquence complète terminée avec succès`);
+      });
+    };
+    
+    // Orchestrer la séquence complète
+    hangUpCurrentCall(() => {
+      applyStatusToContact(() => {
+        selectNextContact((nextId, nextName, nextPhone) => {
+          callContact(nextId, nextName, nextPhone);
+        });
+      });
+    });
+    
+  }, [activeContact, contactInCallId, filteredContacts, fnKeyMappings, callFormAction, hangUpFormAction, updateContactFormAction, setActiveContact, setContacts, toast]);
 
   useEffect(() => {
-    const handleGlobalKeyDown = async (event: KeyboardEvent) => {
+    console.log("[TouchesFn] Installation d'un gestionnaire unique pour les touches fonction");
+    
+    // Définir une seule fonction de gestionnaire
+    const handleFunctionKey = async (event: KeyboardEvent) => {
       const relevantKeys = ['F2', 'F3', 'F4', 'F5', 'F6', 'F7', 'F8', 'F9', 'F10'];
+      
+      // Vérifier si c'est une touche pertinente
       if (!relevantKeys.includes(event.key)) {
         return;
       }
 
-      event.preventDefault(); 
-      console.log(`[ContactsPage] KeyDown: Touche pertinente détectée: ${event.key}`);
-
-      if (isProcessingFnKey) {
-        toast.warn("Une action est déjà en cours via une touche Fn, veuillez patienter...");
-        console.log("[ContactsPage] KeyDown: Action déjà en cours (ref), touche ignorée:", event.key);
+      // Logs détaillés
+      console.log(`[TouchesFn] TOUCHE DÉTECTÉE: ${event.key} - Type d'événement: ${event.type} - Phase: ${event.eventPhase}`);
+      
+      // Bloquer le comportement par défaut du navigateur
+      event.preventDefault();
+      
+      // Vérifier si on a un contact actif
+      if (!activeContact || !activeContact.id) {
+        console.log("[TouchesFn] Aucun contact actif ou ID manquant, impossible de traiter la touche");
+        toast.info("Veuillez d'abord sélectionner un contact valide");
         return;
       }
 
-      setIsProcessingFnKey(true);
-
+      console.log(`[TouchesFn] Contact actif trouvé: ${activeContact.firstName} (ID: ${activeContact.id})`);
+      
+      // Exécuter immédiatement la logique principale sans conditions supplémentaires
       try {
-        console.log(`[ContactsPage] KeyDown: Tentative de traitement de la touche: ${event.key}. isProcessingFnKeyRef est maintenant true.`);
-        await mainFnKeyActionLogic(event);
+        console.log(`[TouchesFn] Exécution directe de la logique pour la touche ${event.key}`);
+        mainFnKeyActionLogic(event);
       } catch (error) {
-        console.error("[ContactsPage] KeyDown: Erreur dans mainFnKeyActionLogic", error);
-        toast.error("Erreur lors du traitement de l'action du raccourci clavier.");
-      } finally {
-        setIsProcessingFnKey(false);
-        console.log(`[ContactsPage] KeyDown: Traitement de la touche ${event.key} terminé. isProcessingFnKeyRef est maintenant false.`);
+        console.error("[TouchesFn] ERREUR lors du traitement:", error);
+        toast.error("Erreur lors du traitement de l'action");
       }
     };
 
-    document.addEventListener('keydown', handleGlobalKeyDown);
-    return () => {
-      document.removeEventListener('keydown', handleGlobalKeyDown);
-      console.log("[ContactsPage] KeyDown: Écouteur d'événements keydown retiré.");
+    // Ajouter plusieurs écouteurs pour s'assurer que l'événement est capturé
+    // 1. Au niveau window avec capture
+    window.addEventListener('keydown', handleFunctionKey, { capture: true });
+    
+    // 2. Au niveau document avec capture
+    document.addEventListener('keydown', handleFunctionKey, { capture: true });
+    
+    // 3. Via la propriété onkeydown
+    const originalOnKeyDown = document.onkeydown;
+    document.onkeydown = function(e) {
+      const relevantKeys = ['F2', 'F3', 'F4', 'F5', 'F6', 'F7', 'F8', 'F9', 'F10'];
+      if (relevantKeys.includes(e.key)) {
+        console.log(`[TouchesFn] Touche interceptée via document.onkeydown: ${e.key}`);
+        handleFunctionKey(e);
+        return false;
+      }
+      return originalOnKeyDown ? originalOnKeyDown.call(this, e) : true;
     };
-  }, [mainFnKeyActionLogic, setIsProcessingFnKey]);
+    
+    console.log("[TouchesFn] Écouteurs d'événements installés avec succès");
+
+    return () => {
+      console.log("[TouchesFn] Nettoyage des écouteurs d'événements");
+      window.removeEventListener('keydown', handleFunctionKey, { capture: true });
+      document.removeEventListener('keydown', handleFunctionKey, { capture: true });
+      document.onkeydown = originalOnKeyDown;
+    };
+  }, [mainFnKeyActionLogic, activeContact, toast]);
 
   useEffect(() => {
     const container = tableViewportRef.current;
@@ -734,7 +856,7 @@ export default function ContactsPage() {
         </div>
             <div 
               ref={tableViewportRef} 
-              className="overflow-auto"
+              className="overflow-auto contain-paint will-change-transform"
               style={{ maxHeight: 'calc(100vh - 300px)' }} 
             >
               {isLoading ? (
