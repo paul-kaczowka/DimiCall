@@ -84,11 +84,37 @@ const IconHeader = ({ icon: IconComponent, text }: { icon: React.ElementType, te
   </div>
 );
 
+// Composant optimisé pour la cellule avec la durée d'appel
+const DureeAppelCell = React.memo(({ contactId, value }: { contactId: string, value: string | null | undefined }) => {
+  console.log(`[ContactTable dureeAppel cell] Contact ID: ${contactId}, Value from info.getValue(): ${value || ''}`);
+  
+  return (
+    <ReadOnlyCell 
+      value={value} 
+      emptyPlaceholder="Non appelé" 
+    />
+  );
+});
+DureeAppelCell.displayName = 'DureeAppelCell';
+
 // Envelopper le composant avec React.memo
-export function ContactTable({ data, onEditContact, onActiveContactChange, scrollContainerRef, isProcessingId, error }: ContactTableProps) {
+export const ContactTable = React.memo(function ContactTableComponent({ 
+  data, 
+  onEditContact, 
+  onActiveContactChange, 
+  scrollContainerRef, 
+  isProcessingId, 
+  error 
+}: ContactTableProps) {
   const [columnPinning, setColumnPinning] = React.useState<ColumnPinningState>({}); // Aucune colonne figée par défaut
   const [activeRowId, setActiveRowId] = React.useState<string | null>(null); // Garder l'ID pour la surbrillance
   const [isScrollContainerReady, setIsScrollContainerReady] = React.useState(false);
+
+  // Optimiser la fonction de clic sur une ligne - POSITIONNER AVANT D'AUTRES HOOKS
+  const handleRowClick = React.useCallback((row: Row<Contact>) => {
+    console.log(`[ContactTable] Row clicked, ID: ${row.original.id}`);
+    setActiveRowId(row.original.id);
+  }, []);
 
   // Utilisation de la prop error (exemple simple)
   React.useEffect(() => {
@@ -99,69 +125,27 @@ export function ContactTable({ data, onEditContact, onActiveContactChange, scrol
     }
   }, [error]);
 
+  // Effet pour notifier le parent du changement de la ligne active - RÉAJOUTÉ
+  React.useEffect(() => {
+    if (onActiveContactChange && activeRowId) {
+      const activeContact = data.find(contact => contact.id === activeRowId);
+      onActiveContactChange(activeContact || null);
+    } else if (onActiveContactChange && !activeRowId) {
+      onActiveContactChange(null);
+    }
+  }, [activeRowId, data, onActiveContactChange]);
+
   const internalTableWrapperRef = React.useRef<HTMLDivElement>(null); // Renommé pour éviter confusion, c'est le ref du composant Table de ui/table
 
+  // Réduire la fréquence des rendus en vérifiant l'état du container une seule fois
   React.useEffect(() => {
     if (scrollContainerRef?.current) {
       setIsScrollContainerReady(true);
       console.log("[ContactTable] Scroll container IS READY:", scrollContainerRef.current);
-    } else {
-      // Optionnel: remettre à false si la ref disparaît (improbable dans ce flux)
-      // setIsScrollContainerReady(false);
-      console.log("[ContactTable] Scroll container NOT YET READY.");
     }
-    // On veut que cet effet se ré-exécute si scrollContainerRef (la prop) change OU si scrollContainerRef.current change.
-    // Mettre scrollContainerRef.current directement dans les dépendances d'un useEffect est généralement déconseillé
-    // car sa mutation ne déclenche pas de re-render. Cependant, ici, on s'en sert pour déclencher un état.
-    // Une meilleure approche serait peut-être un callback ref, mais essayons ceci pour l'instant.
   }, [scrollContainerRef]);
 
-  // Effet pour notifier le parent du changement de la ligne active
-  React.useEffect(() => {
-    if (onActiveContactChange) {
-      if (activeRowId) {
-        // Log plus détaillé pour les types d'ID
-        // console.log("[ContactTable] Inspecting before find. activeRowId:", activeRowId, "(type:", typeof activeRowId, ") First contact ID from data:", data.length > 0 ? data[0].id : "N/A", "(type:", data.length > 0 ? typeof data[0].id : "N/A", ")");
-        const activeContact = data.find(contact => contact.id === activeRowId); // Comparaison directe (string vs string ou number vs number)
-        // console.log("[ContactTable] Active contact ID:", activeRowId, "Found contact:", activeContact);
-        onActiveContactChange(activeContact || null);
-      } else {
-        // console.log("[ContactTable] Active contact ID: null");
-        onActiveContactChange(null);
-      }
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeRowId, data]); // data est ajoutée comme dépendance car le contact recherché en dépend. onActiveContactChange est stable.
-
-  // Effet pour gérer le défilement et mettre à jour la barre de progression -- SUPPRIMÉ
-  // React.useEffect(() => {
-  //   const container = scrollContainerRef?.current || internalTableWrapperRef.current;
-  //   if (!container) return;
-  //   const handleScroll = () => {
-  //     const { scrollTop, scrollHeight, clientHeight } = container;
-  //     const isScrollable = scrollHeight > clientHeight;
-  //     let percentage = 0;
-  //     console.log(`[ContactTable] Scroll Event: scrollTop=${scrollTop}, scrollHeight=${scrollHeight}, clientHeight=${clientHeight}, isScrollable=${isScrollable}`);
-  //     if (isScrollable) {
-  //       percentage = (scrollTop / (scrollHeight - clientHeight)) * 100;
-  //     } else if (scrollHeight > 0 && clientHeight >= scrollHeight) {
-  //       percentage = 100;
-  //     }
-  //     if (onScrollChange) {
-  //       onScrollChange(Math.max(0, Math.min(percentage, 100)), isScrollable);
-  //     }
-  //   };
-  //   container.addEventListener('scroll', handleScroll);
-  //   handleScroll();
-  //   const resizeObserver = new ResizeObserver(handleScroll);
-  //   resizeObserver.observe(container);
-  //   return () => {
-  //     container.removeEventListener('scroll', handleScroll);
-  //     resizeObserver.disconnect();
-  //   };
-  // }, [data, onScrollChange, scrollContainerRef]);
-
-  // Définition des colonnes à l'intérieur du composant pour l'instant
+  // Optimisation: mémoriser les colonnes pour éviter les recréations non nécessaires
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const columns = React.useMemo<ColumnDef<Contact, any>[]>(() => [
     {
@@ -302,13 +286,8 @@ export function ContactTable({ data, onEditContact, onActiveContactChange, scrol
     {
       accessorKey: 'dureeAppel',
       header: () => <IconHeader icon={Hourglass} text="Durée Appel" />,
-      cell: (info) => {
-        const value = info.getValue() as string | null | undefined;
-        // DEBUG: Log la valeur pour la cellule dureeAppel
-        console.log(`[ContactTable dureeAppel cell] Contact ID: ${info.row.original.id}, Value from info.getValue(): ${value}`);
-        return <ReadOnlyCell value={value} emptyPlaceholder="N/A" />;
-      },
-      size: 150,
+      cell: (info) => <DureeAppelCell contactId={info.row.original.id} value={info.getValue()} />,
+      size: 80,
     },
     {
       accessorKey: 'source',
@@ -347,7 +326,7 @@ export function ContactTable({ data, onEditContact, onActiveContactChange, scrol
     },
     */
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  ], [onEditContact]); // Assurez-vous que les dépendances sont correctes, onEditContact est stable
+  ], []);
 
   const table = useReactTable<Contact>({
     data,
@@ -391,7 +370,7 @@ export function ContactTable({ data, onEditContact, onActiveContactChange, scrol
   }
 
   return (
-    <div className="p-4">
+    <div className="relative w-full h-full flex flex-col">
       {/* <p className="mb-2">Tableau des contacts (Base)</p> */}
       <div className="border rounded-md">
         <Table
@@ -477,8 +456,7 @@ export function ContactTable({ data, onEditContact, onActiveContactChange, scrol
                   data-index={virtualRow.index} // L'index de l'élément virtuel
                   ref={node => rowVirtualizer.measureElement(node)} // Mesurer l'élément
                   onClick={() => {
-                    console.log("[ContactTable] Row clicked, ID:", row.original.id);
-                    setActiveRowId(row.original.id === activeRowId ? null : row.original.id);
+                    handleRowClick(row);
                   }}
                   data-state={isSelected ? "selected" : "none"} // Utiliser data-state="selected"
                   className={cn(
@@ -531,6 +509,6 @@ export function ContactTable({ data, onEditContact, onActiveContactChange, scrol
       )}
     </div>
   );
-}
+});
 
 ContactTable.displayName = 'ContactTable'; 

@@ -20,7 +20,7 @@ from zoneinfo import ZoneInfo # AJOUTÉ : pour une meilleure gestion des fuseaux
 import schedule
 import uvicorn
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form, BackgroundTasks, Response, Path as FastAPIPath, Body
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, FileResponse
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware # Importer CORSMiddleware
 from fastapi import status
@@ -100,6 +100,11 @@ BASE_DIR = Path(__file__).resolve().parent
 BACKUP_DIR = BASE_DIR / "backups"
 BACKUP_DIR.mkdir(parents=True, exist_ok=True) # S'assurer que le dossier existe
 CONTACTS_STORAGE_FILE = BASE_DIR / "contacts_storage.parquet"
+
+# --- Chemin pour le dossier d'autosauvegarde ---
+PROJECT_ROOT_DIR = BASE_DIR.parent.parent  # Remonter de 2 niveaux pour être à la racine du projet
+AUTOSAVE_DIR = PROJECT_ROOT_DIR / "Autosave"
+AUTOSAVE_DIR.mkdir(parents=True, exist_ok=True)  # Créer le dossier s'il n'existe pas
 
 # --- Constante pour le fuseau horaire de Paris ---
 PARIS_TZ = ZoneInfo("Europe/Paris")
@@ -1031,3 +1036,130 @@ if __name__ == "__main__":
     # asyncio.create_task(run_scheduler()) 
     # uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info")
     pass 
+
+# --- Fonctions de gestion de l'autosauvegarde ---
+def save_to_autosave_file(csv_data: str, file_path: str) -> bool:
+    """
+    Enregistre les données CSV dans le fichier d'autosauvegarde.
+    
+    Args:
+        csv_data: Le contenu CSV à sauvegarder
+        file_path: Le chemin relatif du fichier à créer/mettre à jour
+    
+    Returns:
+        bool: True si la sauvegarde a réussi, False sinon
+    """
+    try:
+        # Nettoyer le chemin pour éviter les problèmes de sécurité
+        relative_path = file_path.strip('/')
+        # Construire le chemin absolu dans le dossier Autosave
+        target_path = AUTOSAVE_DIR / relative_path
+        
+        # Créer les répertoires intermédiaires si nécessaire
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        
+        # Supprimer les lignes vides superflues
+        lines = csv_data.splitlines()
+        non_empty_lines = [line for line in lines if line.strip()]
+        clean_csv_data = '\n'.join(non_empty_lines)
+        
+        # Écrire le fichier
+        with open(target_path, 'w', encoding='utf-8') as f:
+            f.write(clean_csv_data)
+        
+        print(f"[Autosave] Fichier sauvegardé avec succès: {target_path}")
+        return True
+    except Exception as e:
+        print(f"[Autosave] Erreur lors de la sauvegarde du fichier {file_path}: {e}")
+        return False
+
+# --- Endpoint pour l'autosauvegarde ---
+@app.post("/api/autosave", status_code=status.HTTP_200_OK)
+async def autosave_contacts(
+    csvData: str = Form(..., description="Données CSV des contacts"),
+    path: str = Form(..., description="Chemin relatif du fichier à sauvegarder")
+):
+    """
+    Enregistre les données CSV dans le fichier d'autosauvegarde.
+    
+    Returns:
+        dict: Message de confirmation avec le statut de l'opération
+    """
+    try:
+        if not csvData:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Aucune donnée CSV fournie"
+            )
+        
+        success = save_to_autosave_file(csvData, path)
+        
+        if success:
+            return {"message": "Fichier d'autosauvegarde enregistré avec succès"}
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Erreur lors de la sauvegarde du fichier"
+            )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Erreur inattendue: {str(e)}"
+        )
+
+# --- Endpoint pour vérifier si un fichier d'autosauvegarde existe ---
+@app.head("/Autosave/{file_path:path}")
+async def check_autosave_file_exists(file_path: str):
+    """
+    Vérifie si un fichier d'autosauvegarde existe.
+    
+    Args:
+        file_path: Chemin relatif du fichier à vérifier
+    
+    Returns:
+        Response: Vide avec code 200 si le fichier existe, 404 sinon
+    """
+    try:
+        # Nettoyer le chemin pour éviter les problèmes de sécurité
+        file_path = Path(file_path).name  # Ne garder que le nom du fichier
+        target_path = AUTOSAVE_DIR / file_path
+        
+        if target_path.exists() and target_path.is_file():
+            return Response(status_code=status.HTTP_200_OK)
+        else:
+            return Response(status_code=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        print(f"[Autosave] Erreur lors de la vérification du fichier {file_path}: {e}")
+        return Response(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+# --- Endpoint pour récupérer un fichier d'autosauvegarde ---
+@app.get("/Autosave/{file_path:path}")
+async def get_autosave_file(file_path: str):
+    """
+    Récupère un fichier d'autosauvegarde.
+    
+    Args:
+        file_path: Chemin relatif du fichier à récupérer
+    
+    Returns:
+        FileResponse: Le contenu du fichier
+    """
+    try:
+        # Nettoyer le chemin pour éviter les problèmes de sécurité
+        file_path = Path(file_path).name  # Ne garder que le nom du fichier
+        target_path = AUTOSAVE_DIR / file_path
+        
+        if target_path.exists() and target_path.is_file():
+            return FileResponse(target_path)
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Fichier {file_path} non trouvé"
+            )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Erreur lors de la récupération du fichier: {str(e)}"
+        ) 

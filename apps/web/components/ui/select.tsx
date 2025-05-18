@@ -98,6 +98,14 @@ function SelectLabel({
   )
 }
 
+// Créer une version mémoïsée du SelectItemText pour éviter les mises à jour en cascade
+const MemoizedSelectItemText = React.memo(
+  ({ children }: { children: React.ReactNode }) => (
+    <SelectPrimitive.ItemText>{children}</SelectPrimitive.ItemText>
+  )
+);
+MemoizedSelectItemText.displayName = 'MemoizedSelectItemText';
+
 function SelectItem({
   className,
   children,
@@ -112,15 +120,20 @@ function SelectItem({
       )}
       {...props}
     >
-      <span className="absolute right-2 flex size-3.5 items-center justify-center">
+      <span className="absolute right-2 flex h-3.5 w-3.5 items-center justify-center">
         <SelectPrimitive.ItemIndicator>
-          <CheckIcon className="size-4" />
+          <CheckIcon className="h-4 w-4" />
         </SelectPrimitive.ItemIndicator>
       </span>
-      <SelectPrimitive.ItemText>{children}</SelectPrimitive.ItemText>
+      {typeof children === 'string' ? (
+        <MemoizedSelectItemText>{children}</MemoizedSelectItemText>
+      ) : (
+        children
+      )}
     </SelectPrimitive.Item>
-  )
+  );
 }
+SelectItem.displayName = SelectPrimitive.Item.displayName;
 
 function SelectSeparator({
   className,

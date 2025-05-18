@@ -1,4 +1,4 @@
-import { clsx, type ClassValue } from "clsx"
+import { type ClassValue, clsx } from "clsx"
 import { twMerge } from "tailwind-merge"
 
 export function cn(...inputs: ClassValue[]) {
@@ -99,4 +99,38 @@ export function formatPhoneNumber(phoneNumber: string | null | undefined): strin
   }
   
   return cleaned; // Dernier recours si tout échoue
+}
+
+// Animation style pour dessiner le symbole infini
+export const animateDrawInfinity = `
+  @keyframes drawInfinity {
+    0% {
+      stroke-dashoffset: 60;
+    }
+    100% {
+      stroke-dashoffset: 0;
+    }
+  }
+  
+  .animate-draw-infinity {
+    animation: drawInfinity 2s ease-in-out forwards;
+  }
+`;
+
+export function appendStyleToHead(styleContent: string) {
+  if (typeof document !== 'undefined') {
+    // Vérifier si un style avec cette animation existe déjà
+    const existingStyle = document.getElementById('animation-infinity-style');
+    if (!existingStyle) {
+      const styleElement = document.createElement('style');
+      styleElement.id = 'animation-infinity-style';
+      styleElement.textContent = styleContent;
+      document.head.appendChild(styleElement);
+    }
+  }
+}
+
+// Appeler cette fonction lors de l'initialisation de l'application
+export function initAnimationStyles() {
+  appendStyleToHead(animateDrawInfinity);
 }

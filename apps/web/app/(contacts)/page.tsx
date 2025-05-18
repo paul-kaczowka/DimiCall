@@ -38,7 +38,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { Button } from '@/components/ui/button';
-import { cn } from '@/lib/utils';
+import { cn, initAnimationStyles } from '@/lib/utils';
 import type { Contact as ContactSchemaType } from '@/lib/schemas/contact';
 import { FunctionKeyStatusMappingGuide, type StatusMapping } from '@/components/ui/FunctionKeyStatusMappingGuide';
 import { AdbStatusBadge } from '@/components/ui/AdbStatusBadge';
@@ -104,6 +104,11 @@ const safeFormat = (date: Date | string | null | undefined, formatStr: string, o
 };
 
 export default function ContactsPage() {
+  // Initialiser les styles d'animation
+  useEffect(() => {
+    initAnimationStyles();
+  }, []);
+
   const [contacts, setContacts] = useState<ContactAppType[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isDragOver, setIsDragOver] = useState(false);
@@ -114,6 +119,47 @@ export default function ContactsPage() {
   
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedSearchColumn, setSelectedSearchColumn] = useState('firstName');
+
+  const searchableColumns = useMemo((): SearchableColumn[] => [
+    { value: 'firstName', label: 'Prénom', icon: <User className="h-4 w-4" /> },
+    { value: 'lastName', label: 'Nom', icon: <User className="h-4 w-4" /> },
+    { value: 'email', label: 'Email', icon: <Mail className="h-4 w-4" /> },
+    { value: 'phoneNumber', label: 'Téléphone', icon: <Phone className="h-4 w-4" /> },
+    { value: 'status', label: 'Statut', icon: <Info className="h-4 w-4" /> },
+    { value: 'comment', label: 'Commentaire', icon: <MessageSquareText className="h-4 w-4" /> },
+    { value: 'source', label: 'Source', icon: <Waypoints className="h-4 w-4" /> },
+    { value: 'dateAppel', label: 'Date Appel', icon: <Phone className="h-4 w-4" /> },
+    { value: 'dateRappel', label: 'Date Rappel', icon: <BellRing className="h-4 w-4" /> },
+    { value: 'dateRendezVous', label: 'Date RDV', icon: <CalendarDays className="h-4 w-4" /> },
+  ], []);
+
+  const handleSearchChange = useCallback((newSearchTerm: string, newSelectedColumn: string) => {
+    setSearchTerm(newSearchTerm);
+    setSelectedSearchColumn(newSelectedColumn);
+  }, []);
+
+  // Définir filteredContacts tôt dans le composant pour éviter l'erreur "Cannot access before initialization"
+  const filteredContacts = useMemo(() => {
+    if (!searchTerm) return contacts;
+    return contacts.filter(contact => {
+      const searchableValue = contact[selectedSearchColumn as keyof ContactAppType];
+      if (searchableValue && typeof searchableValue === 'string') {
+        return searchableValue.toLowerCase().includes(searchTerm.toLowerCase());
+      }
+      return false;
+    });
+  }, [contacts, searchTerm, selectedSearchColumn]);
+
+  // Calculer le pourcentage de contacts ayant un statut défini
+  const statusCompletionPercentage = useMemo(() => {
+    if (contacts.length === 0) return 0;
+    
+    const contactsWithStatus = contacts.filter(contact => 
+      contact.status && contact.status.trim() !== ''
+    );
+    
+    return Math.round((contactsWithStatus.length / contacts.length) * 100);
+  }, [contacts]);
 
   const [importState, importFormAction, isImportPending] = useActionState(
     importContactsAction,
@@ -131,6 +177,32 @@ export default function ContactsPage() {
     hangUpCallAction,
     initialActionState as ActionState<ContactAppType | null>
   );
+  
+  // Fonctions wrappers sécurisées pour les appels d'action
+  const safeImportAction = useCallback((formData: FormData) => {
+    startTransition(() => {
+      importFormAction(formData);
+    });
+  }, [importFormAction]);
+  
+  const safeUpdateContactAction = useCallback((formData: FormData) => {
+    startTransition(() => {
+      updateContactFormAction(formData);
+    });
+  }, [updateContactFormAction]);
+  
+  const safeCallAction = useCallback((formData: FormData) => {
+    startTransition(() => {
+      callFormAction(formData);
+    });
+  }, [callFormAction]);
+  
+  const safeHangUpAction = useCallback((formData: FormData) => {
+    startTransition(() => {
+      hangUpFormAction(formData);
+    });
+  }, [hangUpFormAction]);
+  
   const inputFileRef = useRef<HTMLInputElement>(null);
   const ribbonRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -180,6 +252,106 @@ export default function ContactsPage() {
     }
   }, [importState, fetchAndSetContacts]);
 
+  const getContactsForAutosave = useCallback(async () => {
+    return contacts;
+  }, [contacts]);
+
+  const { 
+    isSaving: isAutosaveSaving,
+    error: autosaveHookError,
+    fileHandle: autosaveFileHandle,
+    resetFileHandle,
+    requestFileHandle,
+    triggerSave,
+    isAutoSaveRestored
+  } = useAutosaveFile(getContactsForAutosave);
+
+  const [isClearConfirmOpen, setIsClearConfirmOpen] = useState(false);
+  // État pour suivre si l'autosauvegarde est active
+  const [isAutosaveActive, setIsAutosaveActive] = useState(false);
+
+  // Référence pour tracker si une opération d'autosave est en cours
+  const autosaveOperationInProgressRef = useRef(false);
+
+  // Mettre à jour l'état isAutosaveActive quand autosaveFileHandle change ou isAutoSaveRestored change
+  useEffect(() => {
+    // Considérer l'autosave comme actif si le fichier handle existe OU si l'autosave a été restauré
+    setIsAutosaveActive(!!autosaveFileHandle || isAutoSaveRestored);
+    
+    // Activer l'autosauvegarde si elle a été restaurée automatiquement
+    if (isAutoSaveRestored) {
+      toast.success("Autosauvegarde restaurée et activée automatiquement");
+      console.log("[Autosave] Autosauvegarde restaurée et activée automatiquement");
+    }
+  }, [autosaveFileHandle, isAutoSaveRestored]);
+
+  // Fonction pour demander l'emplacement du fichier d'autosauvegarde
+  const handleRequestFileHandle = useCallback(async () => {
+    try {
+      // Vérifier si une demande de sélection est déjà en cours
+      if (isAutosaveSaving || autosaveOperationInProgressRef.current) {
+        console.log("[Autosave] Une opération d'autosave est déjà en cours");
+        return false;
+      }
+
+      // Définir le verrou pour éviter les opérations multiples
+      autosaveOperationInProgressRef.current = true;
+
+      const handle = await requestFileHandle();
+      if (handle) {
+        // Déclencher une première sauvegarde
+        await triggerSave(undefined, true);
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error("[Autosave] Erreur lors de la demande de l'emplacement du fichier:", error);
+      return false;
+    } finally {
+      // Relâcher le verrou avec un délai pour éviter les clics multiples
+      setTimeout(() => {
+        autosaveOperationInProgressRef.current = false;
+      }, 1000);
+    }
+  }, [requestFileHandle, triggerSave, isAutosaveSaving]);
+
+  // Fonction pour activer/désactiver l'autosauvegarde
+  const toggleAutosave = useCallback(() => {
+    // Vérifier si une opération est déjà en cours
+    if (autosaveOperationInProgressRef.current) {
+      console.log("[Autosave] Une opération est déjà en cours, ignoré");
+      return;
+    }
+
+    if (isAutosaveActive && autosaveFileHandle) {
+      // Désactiver l'autosauvegarde
+      resetFileHandle();
+      toast.info("Autosauvegarde désactivée");
+    } else if (!isAutosaveActive && !autosaveFileHandle) {
+      // L'activation se fait via handleRequestFileHandle,
+      // rien à faire ici, car le bouton appellera déjà handleRequestFileHandle
+      console.log("[Autosave] Préparation de la demande d'emplacement du fichier");
+    }
+  }, [isAutosaveActive, autosaveFileHandle, resetFileHandle]);
+
+  useEffect(() => {
+    if (autosaveHookError) {
+      toast.error(`Erreur d'autosave/téléchargement: ${autosaveHookError}`);
+    }
+  }, [autosaveHookError]);
+
+  // Effet pour suivre l'état de la sauvegarde et notifier l'utilisateur
+  const [wasSaving, setWasSaving] = useState(false);
+  useEffect(() => {
+    if (wasSaving && !isAutosaveSaving && !autosaveHookError) {
+      if (autosaveFileHandle) {
+        toast.success("Fichier sauvegardé automatiquement !");
+      }
+    }
+    setWasSaving(isAutosaveSaving);
+  }, [isAutosaveSaving, wasSaving, autosaveHookError, autosaveFileHandle]);
+
+  // Déplacer les effets qui utilisent isAutosaveActive ici, après sa déclaration
   useEffect(() => {
     if (updateContactState.message) {
       if (updateContactState.success && updateContactState.data) {
@@ -191,12 +363,17 @@ export default function ContactsPage() {
         if (activeContact && activeContact.id === updatedContact.id) {
           setActiveContactState(updatedContact);
         }
+        
+        // Déclencher l'autosauvegarde après mise à jour
+        if (isAutosaveActive) {
+          triggerSave(undefined, false, false);
+        }
       } else {
         toast.error(updateContactState.message || "Erreur lors de la mise à jour du contact.");
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [updateContactState]);
+  }, [updateContactState, isAutosaveActive]);
 
   useEffect(() => {
     if (callState.message) {
@@ -213,6 +390,11 @@ export default function ContactsPage() {
           setActiveContactState(updatedContact);
           setContactInCallId(updatedContact.id);
         }
+        
+        // Déclencher l'autosauvegarde après appel
+        if (isAutosaveActive) {
+          triggerSave(undefined, false, false);
+        }
       } else if (callState.success && !callState.data) {
         toast.success(callState.message + " (Données de contact non reçues pour mise à jour locale).");
       } else {
@@ -220,7 +402,7 @@ export default function ContactsPage() {
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [callState, activeContact]);
+  }, [callState, activeContact, isAutosaveActive]);
 
   useEffect(() => {
     if (hangUpState.message) {
@@ -234,165 +416,17 @@ export default function ContactsPage() {
           setActiveContactState(updatedContact);
         }
         setContactInCallId(null);
+        
+        // Déclencher l'autosauvegarde après raccrochage
+        if (isAutosaveActive) {
+          triggerSave(undefined, false, false);
+        }
       } else {
         toast.error(hangUpState.message || "Erreur lors du raccrochage de l'appel.");
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hangUpState, activeContact]);
-
-  const getContactsForAutosave = useCallback(async () => {
-    return contacts;
-  }, [contacts]);
-
-  const { 
-    isSaving: isAutosaveSaving,
-    error: autosaveHookError,
-    fileHandle: autosaveFileHandle,
-    resetFileHandle,
-  } = useAutosaveFile(getContactsForAutosave);
-
-  const [isClearConfirmOpen, setIsClearConfirmOpen] = useState(false);
-
-  useEffect(() => {
-    if (autosaveHookError) {
-      toast.error(`Erreur d'autosave/téléchargement: ${autosaveHookError}`);
-    }
-  }, [autosaveHookError]);
-
-  const [wasSaving, setWasSaving] = useState(false);
-  useEffect(() => {
-    if (wasSaving && !isAutosaveSaving && !autosaveHookError) {
-      if (autosaveFileHandle) {
-         toast.success("Fichier sauvegardé automatiquement !");
-      }
-    }
-    setWasSaving(isAutosaveSaving);
-  }, [isAutosaveSaving, wasSaving, autosaveHookError, autosaveFileHandle]);
-
-  const processFileForImport = (file: File) => {
-    const formData = new FormData();
-    formData.append('file', file);
-    const acceptedTypes = [".csv", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "application/vnd.ms-excel"];
-    const fileExtension = "." + file.name.split('.').pop()?.toLowerCase();
-    const isTypeAccepted = acceptedTypes.some(type => {
-      if (type.startsWith('.')) return fileExtension === type;
-      return file.type === type;
-    });
-
-    if (!isTypeAccepted) {
-      toast.error(`Type de fichier non supporté: ${file.name}. Veuillez utiliser un fichier CSV ou Excel.`);
-      if (inputFileRef.current) inputFileRef.current.value = "";
-      return;
-    }
-
-    startTransition(() => {
-      importFormAction(formData);
-    });
-  };
-
-  const handleFileSelectedForImport = (event: React.ChangeEvent<HTMLInputElement>) => {
-    if (event.target.files && event.target.files.length > 0) {
-      const file = event.target.files[0];
-      processFileForImport(file);
-    } else {
-      toast.warn("Aucun fichier sélectionné ou sélection annulée.");
-    }
-  };
-
-  const handleDragOver = (event: React.DragEvent<HTMLDivElement>) => {
-    event.preventDefault();
-    setIsDragOver(true);
-  };
-
-  const handleDragEnter = (event: React.DragEvent<HTMLDivElement>) => {
-    event.preventDefault();
-    setIsDragOver(true);
-  };
-
-  const handleDragLeave = (event: React.DragEvent<HTMLDivElement>) => {
-    if (event.currentTarget.contains(event.relatedTarget as Node)) {
-      return;
-    }
-    setIsDragOver(false);
-  };
-
-  const handleDrop = (event: React.DragEvent<HTMLDivElement>) => {
-    event.preventDefault();
-    setIsDragOver(false);
-    if (inputFileRef.current) inputFileRef.current.value = "";
-
-    if (event.dataTransfer.files && event.dataTransfer.files.length > 0) {
-      const file = event.dataTransfer.files[0];
-      processFileForImport(file);
-      event.dataTransfer.clearData();
-    } else {
-      toast.warn("Aucun fichier n'a été déposé ou le type n'est pas correct.");
-    }
-  };
-
-  const handleEditContactInline = useCallback(async (updatedField: Partial<ContactAppType>): Promise<ContactAppType | null> => {
-    if (!updatedField.id) {
-      toast.error("ID du contact manquant pour la mise à jour.");
-      console.error("[ContactsPage] Tentative de mise à jour sans ID de contact.", updatedField);
-      return null;
-    }
-
-    const { id: contactId, ...dataToUpdate } = updatedField;
-
-    if (Object.keys(dataToUpdate).length === 0) {
-      return null;
-    }
-
-    const formData = new FormData();
-    formData.append('contactId', contactId as string);
-    Object.entries(dataToUpdate).forEach(([key, value]) => {
-      if (value !== undefined && value !== null) {
-        formData.append(key, String(value));
-      }
-    });
-
-    console.log("[ContactsPage] handleEditContactInline - Données envoyées à updateContactFormAction:", Object.fromEntries(formData.entries()));
-
-    startTransition(() => {
-      updateContactFormAction(formData);
-    });
-
-    const currentContact = contacts.find(c => c.id === contactId);
-    if (currentContact) {
-      return { ...currentContact, ...dataToUpdate };
-    }
-    return null;
-  }, [contacts, updateContactFormAction]);
-
-  const searchableColumns = useMemo((): SearchableColumn[] => [
-    { value: 'firstName', label: 'Prénom', icon: <User className="h-4 w-4" /> },
-    { value: 'lastName', label: 'Nom', icon: <User className="h-4 w-4" /> },
-    { value: 'email', label: 'Email', icon: <Mail className="h-4 w-4" /> },
-    { value: 'phoneNumber', label: 'Téléphone', icon: <Phone className="h-4 w-4" /> },
-    { value: 'status', label: 'Statut', icon: <Info className="h-4 w-4" /> },
-    { value: 'comment', label: 'Commentaire', icon: <MessageSquareText className="h-4 w-4" /> },
-    { value: 'source', label: 'Source', icon: <Waypoints className="h-4 w-4" /> },
-    { value: 'dateAppel', label: 'Date Appel', icon: <Phone className="h-4 w-4" /> },
-    { value: 'dateRappel', label: 'Date Rappel', icon: <BellRing className="h-4 w-4" /> },
-    { value: 'dateRendezVous', label: 'Date RDV', icon: <CalendarDays className="h-4 w-4" /> },
-  ], []);
-
-  const handleSearchChange = useCallback((newSearchTerm: string, newSelectedColumn: string) => {
-    setSearchTerm(newSearchTerm);
-    setSelectedSearchColumn(newSelectedColumn);
-  }, []);
-
-  const filteredContacts = useMemo(() => {
-    if (!searchTerm) return contacts;
-    return contacts.filter(contact => {
-      const searchableValue = contact[selectedSearchColumn as keyof ContactAppType];
-      if (searchableValue && typeof searchableValue === 'string') {
-        return searchableValue.toLowerCase().includes(searchTerm.toLowerCase());
-      }
-      return false;
-    });
-  }, [contacts, searchTerm, selectedSearchColumn]);
+  }, [hangUpState, activeContact, isAutosaveActive]);
 
   const handleRequestClearAllData = () => {
     setIsClearConfirmOpen(true);
@@ -416,228 +450,151 @@ export default function ContactsPage() {
     });
   };
 
-  const mainFnKeyActionLogic = useCallback((event: KeyboardEvent) => {
-    const { key } = event;
-    console.log(`[TouchesFn] Touche traitée: ${key}. Contact actif: ${activeContact?.firstName}`);
+  // Référence pour suivre les séquences d'actions en cours
+  const inActionSequence = React.useRef(false);
 
-    const mapping = fnKeyMappings.find(m => m.keyName === key);
-    if (!mapping) {
-        console.warn(`[TouchesFn] Pas de mapping pour la touche ${key}`);
-        return;
+  // Remplacer complètement la fonction mainFnKeyActionLogic par une implémentation plus robuste
+  const handleFunctionKey = useCallback((event: KeyboardEvent) => {
+    // Prévenir le comportement par défaut du navigateur pour les touches de fonction
+    event.preventDefault();
+
+    // Vérifier si c'est une touche de fonction pertinente
+    const relevantKeys = ['F2', 'F3', 'F4', 'F5', 'F6', 'F7', 'F8', 'F9', 'F10'];
+    if (!relevantKeys.includes(event.key)) {
+      return;
     }
 
+    // Vérifier si on a un contact actif
     if (!activeContact || !activeContact.id) {
-        toast.info("Veuillez d'abord sélectionner un contact valide");
-        return;
+      toast.info("Veuillez d'abord sélectionner un contact valide");
+      return;
     }
 
-    console.log(`[TouchesFn DEBUG] Contact actif au début: ID=${activeContact.id}, Nom=${activeContact.firstName}`);
+    // Vérifier l'état actuel
+    if (isUpdateContactPending) {
+      // Éviter les actions multiples simultanées
+      console.log("[TouchesFn] Action en cours, veuillez patienter");
+      return;
+    }
 
-    // Capturer toutes les données nécessaires immédiatement
-    const currentContactId = activeContact.id;
-    const currentContactFirstName = activeContact.firstName;
+    // Éviter les actions multiples simultanées
+    if (inActionSequence.current) {
+      console.log("[TouchesFn] Séquence d'actions déjà en cours, veuillez patienter");
+      return;
+    }
+
+    // Trouver le statut correspondant à la touche
+    const mapping = fnKeyMappings.find(m => m.keyName === event.key);
+    if (!mapping) {
+      return;
+    }
+
+    // Données du contact actuel
+    const contactId = activeContact.id;
+    const contactName = activeContact.firstName || 'Contact';
     const newStatus = mapping.statusName;
-    
-    // *** ÉTAPE 1: Raccrocher l'appel en cours ***
-    const hangUpCurrentCall = (onDone: () => void) => {
-      console.log(`[TouchesFn] Étape 1: Vérification d'appel en cours`);
-      
-      if (!contactInCallId) {
-        console.log('[TouchesFn] Aucun appel en cours, passage à l\'étape suivante');
-        onDone(); // Passer directement à l'étape suivante
-        return;
-      }
-      
-      console.log(`[TouchesFn] Raccrochage de l'appel (ID: ${contactInCallId})`);
-      
-      const hangUpFormData = new FormData();
-      hangUpFormData.append('contactId', contactInCallId);
-      hangUpFormAction(hangUpFormData);
-      
-      toast.info(`Raccrochage de l'appel en cours...`);
-      
-      // Attendre un court moment avant de passer à l'étape suivante
-      setTimeout(onDone, 800);
-    };
-    
-    // *** ÉTAPE 2: Appliquer le statut ***
-    const applyStatusToContact = (onDone: () => void) => {
-      console.log(`[TouchesFn] Étape 2: Application du statut "${newStatus}" au contact ${currentContactId}`);
-      
-      // Mise à jour côté serveur
-      const statusFormData = new FormData();
-      statusFormData.append('contactId', currentContactId);
-      statusFormData.append('status', newStatus);
-      
-      // Envelopper l'appel d'action dans startTransition
-      startTransition(() => {
+    const isInCall = contactInCallId === contactId;
+
+    // Mise à jour optimiste immédiate de l'interface
+    setContacts(prevContacts => 
+      prevContacts.map(contact => 
+        contact.id === contactId 
+          ? {...contact, status: newStatus}
+          : contact
+      )
+    );
+
+    // Une seule notification claire pour l'utilisateur
+    toast.success(`Statut "${newStatus}" appliqué à ${contactName}`);
+
+    // Séquence d'actions regroupée dans une seule transition pour éviter les rendus intermédiaires
+    startTransition(() => {
+      try {
+        inActionSequence.current = true;
+
+        // Étape 1: Raccrocher si nécessaire
+        if (isInCall) {
+          console.log(`[TouchesFn] Raccrochage de l'appel en cours (ID: ${contactId})`);
+          const hangUpFormData = new FormData();
+          hangUpFormData.append('contactId', contactId);
+          hangUpFormAction(hangUpFormData);
+        }
+
+        // Étape 2: Mise à jour du statut auprès du serveur
+        console.log(`[TouchesFn] Mise à jour du statut: ${newStatus} (ID: ${contactId})`);
+        const statusFormData = new FormData();
+        statusFormData.append('contactId', contactId);
+        statusFormData.append('status', newStatus);
         updateContactFormAction(statusFormData);
+
+        // Étape 3: Trouver et sélectionner le contact suivant
+        const currentIndex = filteredContacts.findIndex(c => c.id === contactId);
+        const hasNextContact = currentIndex !== -1 && currentIndex < filteredContacts.length - 1;
         
-        // Mise à jour locale immédiate
-        setContacts(prevContacts => prevContacts.map(contact => 
-          contact.id === currentContactId 
-            ? {...contact, status: newStatus}
-            : contact
-        ));
-        
-        if (activeContact?.id === currentContactId) {
-          setActiveContact({...activeContact, status: newStatus});
+        if (hasNextContact) {
+          const nextContact = filteredContacts[currentIndex + 1];
+          if (nextContact && nextContact.id) {
+            console.log(`[TouchesFn] Passage au contact suivant: ${nextContact.firstName || 'Contact'} (ID: ${nextContact.id})`);
+            
+            // Mise à jour synchrone du contact actif
+            setActiveContact(nextContact);
+            
+            // Étape 4: Appeler le contact suivant
+            if (nextContact.phoneNumber) {
+              console.log(`[TouchesFn] Appel du contact suivant (ID: ${nextContact.id}, Tél: ${nextContact.phoneNumber})`);
+              const callFormData = new FormData();
+              callFormData.append('contactId', nextContact.id);
+              callFormData.append('phoneNumber', nextContact.phoneNumber);
+              callFormAction(callFormData);
+            }
+          }
         }
-        
-        toast.success(`Statut "${newStatus}" appliqué à ${currentContactFirstName}`);
-        
-        // Passer à l'étape suivante après un court délai
-        setTimeout(onDone, 500);
-      });
-    };
-    
-    // *** ÉTAPE 3: Trouver et sélectionner le contact suivant ***
-    const selectNextContact = (onDone: (id: string, name: string, phone?: string | null) => void) => {
-      console.log(`[TouchesFn] Étape 3: Recherche du contact suivant`);
-      
-      // Trouver l'index actuel
-      const currentIndex = filteredContacts.findIndex(c => c.id === currentContactId);
-      console.log(`[TouchesFn] Index actuel: ${currentIndex}, Total contacts: ${filteredContacts.length}`);
-      
-      if (currentIndex === -1 || currentIndex >= filteredContacts.length - 1) {
-        const reason = currentIndex === -1 
-          ? `Le contact actif n'a pas été trouvé dans la liste` 
-          : `C'était le dernier contact de la liste`;
-          
-        console.log(`[TouchesFn] Pas de contact suivant: ${reason}`);
-        toast.info(reason);
-        return; // Fin de la séquence
-      }
-      
-      // Obtenir le contact suivant
-      const nextContact = filteredContacts[currentIndex + 1];
-      if (!nextContact || !nextContact.id) {
-        console.error(`[TouchesFn] Contact suivant invalide`);
-        toast.error(`Données du contact suivant invalides`);
-        return; // Fin de la séquence
-      }
-      
-      const nextContactId = nextContact.id;
-      const nextContactName = nextContact.firstName || 'Contact';
-      const nextContactPhone = nextContact.phoneNumber;
-      
-      console.log(`[TouchesFn] Contact suivant trouvé: ${nextContactName} (ID: ${nextContactId})`);
-      
-      // Mettre à jour le contact actif dans l'interface
-      startTransition(() => {
-        setActiveContact(nextContact);
-        toast.success(`Passage au contact: ${nextContactName}`);
-        
-        // Laisser l'interface se mettre à jour avant d'appeler le contact
+
+        // Au lieu de fetchAndSetContacts après la séquence, on le programme
+        // pour qu'il soit exécuté après que les autres actions aient eu le temps de finir
         setTimeout(() => {
-          if (onDone) onDone(nextContactId, nextContactName, nextContactPhone);
-        }, 500);
-      });
-    };
-    
-    // *** ÉTAPE 4: Appeler le contact suivant ***
-    const callContact = (contactId: string, contactName: string, contactPhone?: string | null) => {
-      console.log(`[TouchesFn] Étape 4: Appel du contact ${contactName} (ID: ${contactId})`);
-      
-      if (!contactId) {
-        console.error(`[TouchesFn] ID du contact manquant pour l'appel`);
-        toast.error(`Impossible d'appeler le contact: ID manquant`);
-        return;
+          startTransition(() => {
+            fetchAndSetContacts();
+            inActionSequence.current = false; // On relâche le verrou après le rafraîchissement
+          });
+        }, 500); // Un délai raisonnable pour permettre aux autres actions de se terminer
+      } catch (error) {
+        console.error("[TouchesFn] Erreur pendant la séquence d'actions:", error);
+        toast.error("Une erreur est survenue pendant la mise à jour");
+        inActionSequence.current = false; // Assurez-vous de libérer le verrou même en cas d'erreur
       }
-      
-      // Envelopper l'appel d'action dans startTransition
-      startTransition(() => {
-        const callFormData = new FormData();
-        callFormData.append('contactId', contactId);
-        
-        if (contactPhone) {
-          console.log(`[TouchesFn] Numéro utilisé: ${contactPhone}`);
-          callFormData.append('phoneNumber', contactPhone);
-        }
-        
-        callFormAction(callFormData);
-        toast.info(`Appel en cours pour ${contactName}...`);
-        
-        console.log(`[TouchesFn] Séquence complète terminée avec succès`);
-      });
-    };
-    
-    // Orchestrer la séquence complète
-    hangUpCurrentCall(() => {
-      applyStatusToContact(() => {
-        selectNextContact((nextId, nextName, nextPhone) => {
-          callContact(nextId, nextName, nextPhone);
-        });
-      });
     });
-    
-  }, [activeContact, contactInCallId, filteredContacts, fnKeyMappings, callFormAction, hangUpFormAction, updateContactFormAction, setActiveContact, setContacts, toast]);
+  }, [
+    activeContact, 
+    contactInCallId, 
+    filteredContacts, 
+    fnKeyMappings,
+    isUpdateContactPending,
+    callFormAction,
+    hangUpFormAction, 
+    updateContactFormAction,
+    fetchAndSetContacts,
+    setActiveContact,
+    setContacts,
+    toast
+  ]);
+
+  // Utilisation d'une référence stable pour l'écouteur d'événements
+  const stableHandleFunctionKey = useCallback((event: KeyboardEvent) => {
+    handleFunctionKey(event);
+  }, [handleFunctionKey]);
 
   useEffect(() => {
-    console.log("[TouchesFn] Installation d'un gestionnaire unique pour les touches fonction");
+    // Utiliser la référence stable pour éviter les installations/suppressions inutiles
+    window.addEventListener('keydown', stableHandleFunctionKey, { capture: true });
     
-    // Définir une seule fonction de gestionnaire
-    const handleFunctionKey = async (event: KeyboardEvent) => {
-      const relevantKeys = ['F2', 'F3', 'F4', 'F5', 'F6', 'F7', 'F8', 'F9', 'F10'];
-      
-      // Vérifier si c'est une touche pertinente
-      if (!relevantKeys.includes(event.key)) {
-        return;
-      }
-
-      // Logs détaillés
-      console.log(`[TouchesFn] TOUCHE DÉTECTÉE: ${event.key} - Type d'événement: ${event.type} - Phase: ${event.eventPhase}`);
-      
-      // Bloquer le comportement par défaut du navigateur
-      event.preventDefault();
-      
-      // Vérifier si on a un contact actif
-      if (!activeContact || !activeContact.id) {
-        console.log("[TouchesFn] Aucun contact actif ou ID manquant, impossible de traiter la touche");
-        toast.info("Veuillez d'abord sélectionner un contact valide");
-        return;
-      }
-
-      console.log(`[TouchesFn] Contact actif trouvé: ${activeContact.firstName} (ID: ${activeContact.id})`);
-      
-      // Exécuter immédiatement la logique principale sans conditions supplémentaires
-      try {
-        console.log(`[TouchesFn] Exécution directe de la logique pour la touche ${event.key}`);
-        mainFnKeyActionLogic(event);
-      } catch (error) {
-        console.error("[TouchesFn] ERREUR lors du traitement:", error);
-        toast.error("Erreur lors du traitement de l'action");
-      }
-    };
-
-    // Ajouter plusieurs écouteurs pour s'assurer que l'événement est capturé
-    // 1. Au niveau window avec capture
-    window.addEventListener('keydown', handleFunctionKey, { capture: true });
-    
-    // 2. Au niveau document avec capture
-    document.addEventListener('keydown', handleFunctionKey, { capture: true });
-    
-    // 3. Via la propriété onkeydown
-    const originalOnKeyDown = document.onkeydown;
-    document.onkeydown = function(e) {
-      const relevantKeys = ['F2', 'F3', 'F4', 'F5', 'F6', 'F7', 'F8', 'F9', 'F10'];
-      if (relevantKeys.includes(e.key)) {
-        console.log(`[TouchesFn] Touche interceptée via document.onkeydown: ${e.key}`);
-        handleFunctionKey(e);
-        return false;
-      }
-      return originalOnKeyDown ? originalOnKeyDown.call(this, e) : true;
-    };
-    
-    console.log("[TouchesFn] Écouteurs d'événements installés avec succès");
+    console.log("[TouchesFn] Écouteur d'événements installé pour les touches fonction");
 
     return () => {
-      console.log("[TouchesFn] Nettoyage des écouteurs d'événements");
-      window.removeEventListener('keydown', handleFunctionKey, { capture: true });
-      document.removeEventListener('keydown', handleFunctionKey, { capture: true });
-      document.onkeydown = originalOnKeyDown;
+      window.removeEventListener('keydown', stableHandleFunctionKey, { capture: true });
+      console.log("[TouchesFn] Écouteur d'événements supprimé pour les touches fonction");
     };
-  }, [mainFnKeyActionLogic, activeContact, toast]);
+  }, [stableHandleFunctionKey]);
 
   useEffect(() => {
     const container = tableViewportRef.current;
@@ -740,10 +697,8 @@ export default function ContactsPage() {
 
     console.log("[ContactsPage] handleBookingCreated - Données envoyées à updateContactFormAction:", Object.fromEntries(formData.entries()));
 
-    startTransition(() => {
-      updateContactFormAction(formData);
-    });
-  }, [activeContact, updateContactFormAction]);
+    safeUpdateContactAction(formData);
+  }, [activeContact, safeUpdateContactAction]);
 
   const handleRappelDateTimeSelected = useCallback(async (dateTime: Date) => {
     if (!activeContact || !activeContact.id) {
@@ -769,10 +724,99 @@ export default function ContactsPage() {
     formData.append('dateRappel', dateRappel);
     formData.append('heureRappel', heureRappel);
 
-    startTransition(() => {
-      updateContactFormAction(formData);
+    safeUpdateContactAction(formData);
+  }, [activeContact, safeUpdateContactAction]);
+
+  const processFileForImport = (file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const acceptedTypes = [".csv", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "application/vnd.ms-excel"];
+    const fileExtension = "." + file.name.split('.').pop()?.toLowerCase();
+    const isTypeAccepted = acceptedTypes.some(type => {
+      if (type.startsWith('.')) return fileExtension === type;
+      return file.type === type;
     });
-  }, [activeContact, updateContactFormAction]);
+
+    if (!isTypeAccepted) {
+      toast.error(`Type de fichier non supporté: ${file.name}. Veuillez utiliser un fichier CSV ou Excel.`);
+      if (inputFileRef.current) inputFileRef.current.value = "";
+      return;
+    }
+
+    safeImportAction(formData);
+  };
+
+  const handleFileSelectedForImport = (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (event.target.files && event.target.files.length > 0) {
+      const file = event.target.files[0];
+      processFileForImport(file);
+    } else {
+      toast.warn("Aucun fichier sélectionné ou sélection annulée.");
+    }
+  };
+
+  const handleDragOver = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    setIsDragOver(true);
+  };
+
+  const handleDragEnter = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    setIsDragOver(true);
+  };
+
+  const handleDragLeave = (event: React.DragEvent<HTMLDivElement>) => {
+    if (event.currentTarget.contains(event.relatedTarget as Node)) {
+      return;
+    }
+    setIsDragOver(false);
+  };
+
+  const handleDrop = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    setIsDragOver(false);
+    if (inputFileRef.current) inputFileRef.current.value = "";
+
+    if (event.dataTransfer.files && event.dataTransfer.files.length > 0) {
+      const file = event.dataTransfer.files[0];
+      processFileForImport(file);
+      event.dataTransfer.clearData();
+    } else {
+      toast.warn("Aucun fichier n'a été déposé ou le type n'est pas correct.");
+    }
+  };
+
+  const handleEditContactInline = useCallback(async (updatedField: Partial<ContactAppType>): Promise<ContactAppType | null> => {
+    if (!updatedField.id) {
+      toast.error("ID du contact manquant pour la mise à jour.");
+      console.error("[ContactsPage] Tentative de mise à jour sans ID de contact.", updatedField);
+      return null;
+    }
+
+    const { id: contactId, ...dataToUpdate } = updatedField;
+
+    if (Object.keys(dataToUpdate).length === 0) {
+      return null;
+    }
+
+    const formData = new FormData();
+    formData.append('contactId', contactId as string);
+    Object.entries(dataToUpdate).forEach(([key, value]) => {
+      if (value !== undefined && value !== null) {
+        formData.append(key, String(value));
+      }
+    });
+
+    console.log("[ContactsPage] handleEditContactInline - Données envoyées à updateContactFormAction:", Object.fromEntries(formData.entries()));
+
+    safeUpdateContactAction(formData);
+
+    const currentContact = contacts.find(c => c.id === contactId);
+    if (currentContact) {
+      return { ...currentContact, ...dataToUpdate };
+    }
+    return null;
+  }, [contacts, safeUpdateContactAction]);
 
   if (isLoading && contacts.length === 0 && !importState.success) {
     let message = "Chargement des contacts...";
@@ -807,21 +851,25 @@ export default function ContactsPage() {
             <AdbStatusBadge />
           </div>
           <div className="flex-grow w-full p-2 border rounded-lg border-border overflow-hidden">
-      <Ribbon 
-        ref={ribbonRef}
+            <Ribbon 
+              ref={ribbonRef}
               selectedContactEmail={activeContact?.email}
               inputFileRef={inputFileRef as React.RefObject<HTMLInputElement>}
-        handleFileSelectedForImport={handleFileSelectedForImport}
-        isImportPending={isImportPending}
-        isAutosaveSaving={isAutosaveSaving}
-        onRequestClearAllData={handleRequestClearAllData}
+              handleFileSelectedForImport={handleFileSelectedForImport}
+              isImportPending={isImportPending}
+              isAutosaveSaving={isAutosaveSaving}
+              onRequestClearAllData={handleRequestClearAllData}
               activeContact={activeContact}
-              callFormAction={callFormAction}
-              hangUpFormAction={hangUpFormAction}
+              callFormAction={safeCallAction}
+              hangUpFormAction={safeHangUpAction}
               contactInCallId={contactInCallId}
               onExportClick={handleRequestManualExport}
               onBookingCreated={handleBookingCreated}
               onRappelDateTimeSelected={handleRappelDateTimeSelected}
+              isAutosaveActive={isAutosaveActive}
+              onToggleAutosave={toggleAutosave}
+              requestFileHandleForAutosave={handleRequestFileHandle}
+              statusCompletionPercentage={statusCompletionPercentage}
             />
           </div>
           <Button 

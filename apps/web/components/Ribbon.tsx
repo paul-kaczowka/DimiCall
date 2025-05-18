@@ -12,7 +12,7 @@ import {
   BellRing, PhoneOff, Linkedin, /* Search, */ Globe,
   type LucideProps
 } from 'lucide-react';
-import { useEffect, useRef, type ReactNode, useState, useCallback, startTransition } from 'react';
+import { useEffect, /* useRef, */ type ReactNode, useState, /* useCallback, */ startTransition } from 'react';
 import { toast } from 'react-toastify';
 import { getCalApi } from "@calcom/embed-react";
 import { 
@@ -34,22 +34,39 @@ import {
 } from "@/components/ui/dialog";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
-import { format, isValid } from 'date-fns';
+import { /* format, */ isValid } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { Calendar } from '@/components/ui/calendar';
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
-import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
+import { MultiColorSwitch } from '@/components/ui/multicolor-switch';
+import { StatusProgressChart } from "@/components/ui/StatusProgressChart";
 
 // TODO: Remplacez "votre-nom-utilisateur/votre-type-d-evenement" par votre slug d'événement Cal.com réel
-// ou configurez la variable d'environnement NEXT_PUBLIC_CAL_COM_EVENT_SLUG
-// const CAL_COM_EVENT_SLUG = process.env.NEXT_PUBLIC_CAL_COM_EVENT_SLUG || "votre-nom-utilisateur/votre-type-d-evenement"; // MODIFIEZ CECI
 // Utilisation du calLink fourni par l'utilisateur
 const CAL_COM_EVENT_SLUG = process.env.NEXT_PUBLIC_CAL_COM_EVENT_SLUG || "dimitri-morel-arcanis-conseil/audit-patrimonial";
 const CAL_NAMESPACE = "audit-patrimonial"; // Réintroduction du namespace
+
+// Types pour les données Cal.com
+interface CalBooking {
+  uid?: string;
+  id?: string | number;
+}
+
+interface CalEventType {
+  title?: string;
+}
+
+interface CalData {
+  date: string;
+  duration?: number;
+  booking?: CalBooking;
+  eventType?: CalEventType;
+  organizer?: {
+    name: string;
+    email: string;
+    timeZone: string;
+  };
+  confirmed: boolean;
+}
 
 interface RibbonProps {
   onClearAllData?: () => void;
@@ -70,6 +87,12 @@ interface RibbonProps {
   // onRappelClick?: () => void; // Supprimé, géré par DateTimePicker
   // onEmailClick?: () => void; // Supprimé, handleEmail est local
   onRappelDateTimeSelected: (dateTime: Date) => void;
+  // Nouvelles props pour la gestion de l'autosave
+  isAutosaveActive?: boolean;
+  onToggleAutosave?: () => void;
+  requestFileHandleForAutosave?: () => Promise<boolean>;
+  // Prop pour le pourcentage de complétion des statuts
+  statusCompletionPercentage?: number;
 }
 
 export interface CustomButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement>, VariantProps<typeof buttonVariants> {}
@@ -157,9 +180,6 @@ RibbonButton.displayName = "RibbonButton";
 const RibbonSeparator = () => (
     <div className="h-12 w-px bg-border mx-2 self-center"></div>
 );
-
-// Constante pour l'URL de l'API
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
 // Type pour les états du toggle
 type AutoSearchMode = 'disabled' | 'linkedin' | 'google';
@@ -389,8 +409,65 @@ const SimpleDateTimePicker = ({
   );
 };
 
+// Ajout du composant personnalisé pour l'icône d'infini (∞)
+const InfinityIcon = (props: LucideProps) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width="24"
+    height="24"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    {...props}
+  >
+    <path d="M18.178 8c5.096 0 5.096 8 0 8-5.095 0-7.133-8-12.739-8-4.585 0-4.585 8 0 8 5.606 0 7.644-8 12.74-8z" />
+  </svg>
+);
+
+// Ajouter ce composant pour l'animation du symbole infini quand activé
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+const AnimatedInfinityIcon = (props: LucideProps & { active?: boolean }) => {
+  const { active, ...rest } = props;
+  
+  if (!active) return <InfinityIcon {...rest} />;
+  
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width="24"
+      height="24"
+      viewBox="0 0 24 24"
+      fill="none"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      {...rest}
+      className={cn(rest.className)}
+    >
+      <defs>
+        <linearGradient id="infinityGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#ff5e62" />
+          <stop offset="50%" stopColor="#ff9966" />
+          <stop offset="100%" stopColor="#6a82fb" />
+        </linearGradient>
+      </defs>
+      <path 
+        d="M18.178 8c5.096 0 5.096 8 0 8-5.095 0-7.133-8-12.739-8-4.585 0-4.585 8 0 8 5.606 0 7.644-8 12.74-8z"
+        stroke="url(#infinityGradient)"
+        strokeDasharray="60"
+        strokeDashoffset="0"
+        className="animate-draw-infinity"
+      />
+    </svg>
+  );
+};
+
 export const Ribbon = React.forwardRef<HTMLDivElement, RibbonProps>((
   { 
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     selectedContactEmail,
     inputFileRef,
     handleFileSelectedForImport,
@@ -403,7 +480,11 @@ export const Ribbon = React.forwardRef<HTMLDivElement, RibbonProps>((
     contactInCallId,
     onExportClick,
     onBookingCreated,
-    onRappelDateTimeSelected
+    onRappelDateTimeSelected,
+    isAutosaveActive = false,
+    onToggleAutosave,
+    requestFileHandleForAutosave,
+    statusCompletionPercentage
   },
   ref
 ) => {
@@ -454,31 +535,15 @@ export const Ribbon = React.forwardRef<HTMLDivElement, RibbonProps>((
           action: "bookingSuccessful",
           callback: (e) => {
             console.log("[Ribbon] Cal.com bookingSuccessful event:", e);
-            const { data } = e.detail;
-            // Les noms exacts des champs peuvent varier, il faudra peut-être inspecter 'data'
-            // ou consulter la documentation de Cal.com pour les champs exacts.
-            // Exemples de noms de champs potentiels :
-            // data.date_time, data.eventTypeId, data.responses.email, data.uid
-            // data.startTime, data.endTime, data.bookingId, data.title, data.length (duration in minutes)
-
-            // Structure de data selon le linter:
-            // { booking: unknown; eventType: unknown; date: string; duration: number | undefined; organizer: { name: string; email: string; timeZone: string; }; confirmed: boolean; }
-
+            const { data } = e.detail as { data: CalData };
+            // Traitement des données de réservation Cal.com
             const bookingDateStr = data.date; // data.date est une string ISO UTC
-            const bookingDuration = data.duration; // en minutes
-
-            // Tentative d'extraction de l'ID et du titre depuis les objets 'unknown'
-            let bookingIdVal: string | undefined;
+            
+            // Tentative d'extraction du titre depuis l'objet eventType
             let bookingTitleVal: string | undefined;
 
-            if (data.booking && typeof data.booking === 'object' && 'uid' in data.booking && typeof (data.booking as any).uid === 'string') {
-              bookingIdVal = (data.booking as any).uid;
-            } else if (data.booking && typeof data.booking === 'object' && 'id' in data.booking && (typeof (data.booking as any).id === 'string' || typeof (data.booking as any).id === 'number')) {
-              bookingIdVal = String((data.booking as any).id);
-            }
-
-            if (data.eventType && typeof data.eventType === 'object' && 'title' in data.eventType && typeof (data.eventType as any).title === 'string') {
-              bookingTitleVal = (data.eventType as any).title;
+            if (data.eventType && typeof data.eventType === 'object' && 'title' in data.eventType && typeof data.eventType.title === 'string') {
+              bookingTitleVal = data.eventType.title;
             }
 
             if (bookingDateStr && onBookingCreated) { 
@@ -516,7 +581,6 @@ export const Ribbon = React.forwardRef<HTMLDivElement, RibbonProps>((
     // mais il est bon de garder à l'esprit que si une méthode cal("off") existait,
     // elle serait appelée ici. Pour l'instant, on suppose que l'API gère cela.
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   },[onBookingCreated]); // Ajout de onBookingCreated aux dépendances
 
   const performCallAction = () => {
@@ -689,6 +753,7 @@ export const Ribbon = React.forwardRef<HTMLDivElement, RibbonProps>((
   };
   
   const LINKEDIN_WINDOW_NAME = "linkedinSearchWindow";
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const GOOGLE_WINDOW_NAME = "googleSearchWindow";
 
   const handleLinkedInSearch = () => {
@@ -705,15 +770,17 @@ export const Ribbon = React.forwardRef<HTMLDivElement, RibbonProps>((
   };
 
   const handleGoogleSearch = () => {
-    console.log('[Ribbon] handleGoogleSearch: autoSearchMode =', autoSearchMode);
-    console.log('[Ribbon] handleGoogleSearch: activeContact =', activeContact);
-    if (activeContact && activeContact.firstName && activeContact.lastName) {
-      const query = encodeURIComponent(`${activeContact.firstName} ${activeContact.lastName}`);
-      console.log('[Ribbon] handleGoogleSearch: Ouverture Google avec query =', query);
-      window.open(`https://www.google.com/search?q=${query}`, GOOGLE_WINDOW_NAME);
-    } else {
-      console.warn('[Ribbon] handleGoogleSearch: Conditions non remplies (contact, nom, prénom).');
-      toast.info("Veuillez sélectionner un contact avec un nom et prénom pour la recherche Google.");
+    if (activeContact?.firstName || activeContact?.lastName) {
+      const searchQuery = `${activeContact.firstName || ''} ${activeContact.lastName || ''}`;
+      const url = `https://www.google.com/search?q=${encodeURIComponent(searchQuery)}`;
+      
+      // Ouvrir l'URL de recherche Google dans un nouvel onglet
+      window.open(url, '_blank');
+      
+      // Mettre à jour le suivi d'automatisation
+      if (autoSearchMode === 'google') {
+        setAutoSearchMode('disabled');
+      }
     }
   };
   
@@ -724,6 +791,11 @@ export const Ribbon = React.forwardRef<HTMLDivElement, RibbonProps>((
     </div>
   );
 
+  // Gérer les valeurs undefined sécurité
+  const safeStatusCompletionPercentage = statusCompletionPercentage ?? 0;
+
+  // Fonction utilitaire pour le rendu de bulles d'infos
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const renderTooltip = (child: React.ReactElement, tooltipContent: string, ariaLabel: string, disabled?: boolean) => {
     let trigger = child;
     const childProps = child.props as { disabled?: boolean; [key: string]: unknown };
@@ -770,15 +842,7 @@ export const Ribbon = React.forwardRef<HTMLDivElement, RibbonProps>((
         <RibbonButton 
           label="Raccrocher"
           icon={PhoneOff} 
-          onClick={() => {
-            if (activeContact && activeContact.id && contactInCallId === activeContact.id) {
-              const formData = new FormData();
-              formData.append('contactId', activeContact.id);
-              startTransition(() => {
-                hangUpFormAction(formData);
-              });
-            }
-          }} 
+          onClick={performHangUpAction}
           disabled={!activeContact || !contactInCallId || contactInCallId !== activeContact?.id || isImportPending}
           tooltipContent="Raccrocher l'appel en cours"
           className="flex-1 sm:flex-initial"
@@ -870,7 +934,7 @@ export const Ribbon = React.forwardRef<HTMLDivElement, RibbonProps>((
 
         <RibbonSeparator />
 
-      {/* Groupe 4: Importer, Exporter, Tout Effacer */}
+      {/* Groupe 4: Importer, Exporter, Autosave, Tout Effacer */}
       <div className="flex items-center gap-1 p-1 border border-muted rounded-md shadow-sm w-full sm:w-auto">
         <RibbonButton 
           label="Importer"
@@ -888,6 +952,38 @@ export const Ribbon = React.forwardRef<HTMLDivElement, RibbonProps>((
           tooltipContent="Exporter les contacts actuels"
           className="flex-1 sm:flex-initial"
         />
+        
+        <div className="h-12 w-px bg-border mx-2 self-center"></div>
+        
+        <TooltipProvider delayDuration={300}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div className="flex items-center justify-center h-full py-2 px-3">
+                <MultiColorSwitch 
+                  checked={isAutosaveActive}
+                  onCheckedChange={async (checked) => {
+                    if (checked) {
+                      // Si on active l'autosave
+                      const success = await requestFileHandleForAutosave?.();
+                      if (success) {
+                        onToggleAutosave?.();
+                      }
+                    } else {
+                      // Si on désactive l'autosave
+                      onToggleAutosave?.();
+                    }
+                  }}
+                  disabled={isImportPending}
+                  label="Autosave"
+                />
+              </div>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>{isAutosaveActive ? "Désactiver la sauvegarde automatique" : "Activer la sauvegarde automatique"}</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+        
         <RibbonButton 
           label="Tout effacer"
           icon={Trash2} 
@@ -898,12 +994,30 @@ export const Ribbon = React.forwardRef<HTMLDivElement, RibbonProps>((
           className="flex-1 sm:flex-initial"
         />
       </div>
+      
+      <RibbonSeparator />
+      
+      {/* Groupe 5: Diagramme de progression des statuts */}
+      <div className="flex items-center gap-1 p-1 border border-muted rounded-md shadow-sm w-auto">
+        <TooltipProvider delayDuration={300}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div className="flex items-center justify-center h-full py-2 px-3">
+                <StatusProgressChart percentage={safeStatusCompletionPercentage} />
+              </div>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>{safeStatusCompletionPercentage}% des contacts ont un statut défini</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      </div>
 
       {/* Modal pour la création d'email */}
       <Dialog open={emailModalOpen} onOpenChange={setEmailModalOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Création d'email</DialogTitle>
+            <DialogTitle>Création d&apos;email</DialogTitle>
           </DialogHeader>
           
           <div className="space-y-5 py-4">
@@ -963,7 +1077,7 @@ export const Ribbon = React.forwardRef<HTMLDivElement, RibbonProps>((
               Annuler
             </Button>
             <Button onClick={generateAndOpenEmail}>
-              Générer l'email
+              Générer l&apos;email
             </Button>
           </DialogFooter>
         </DialogContent>
