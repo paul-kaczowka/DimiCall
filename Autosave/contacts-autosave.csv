@@ -1,6 +1,6 @@
 firstName,lastName,email,phoneNumber,status,comment,dateRappel,heureRappel,dateRendezVous,heureRendezVous,dateAppel,heureAppel,dureeAppel,source,id
 Paul,Albreg,A.A@ieseg.fr,+33 6 95 90 58 12,D0,,,,,,17/05/2025,17:48:15,00:00:04,,8a1d5876-2422-4392-8f30-faca8740a1bd
-Pierre,Bruton,B.B@ieseg.fr,+33 6 95 90 58 12,,,,,,,17/05/2025,17:48:29,,,f7264c4d-8035-4b28-98e5-2006fc151625
+Pierre,Bruton,B.B@ieseg.fr,+33 6 95 90 58 12,Pas intéressé,,,,,,17/05/2025,17:48:29,,,f7264c4d-8035-4b28-98e5-2006fc151625
 Sarah,Carap,paul.kaczowka@ieseg.fr,+33 6 95 90 58 12,R0,,,,,,17/05/2025,18:03:41,00:00:04,,3ea25567-3908-4350-8801-2f708cad0867
 Dimitri,D,paul.kaczowka@ieseg.fr,+33 6 95 90 58 12,,,,,,,17/05/2025,18:04:07,,,0c1273c7-706f-41ac-989d-fcf6eb51a3f8
 Elise,E,paul.kaczowka@ieseg.fr,+33 6 95 90 58 12,Répondeur,,,,,,17/05/2025,18:16:48,00:00:04,,47ca933f-cb1f-4d3d-8347-a3387dea3fa1

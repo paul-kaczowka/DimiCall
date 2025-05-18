@@ -41,7 +41,6 @@ import { Button } from '@/components/ui/button';
 import { cn, initAnimationStyles } from '@/lib/utils';
 import type { Contact as ContactSchemaType } from '@/lib/schemas/contact';
 import { type StatusMapping } from '@/components/ui/FunctionKeyStatusMappingGuide';
-import { AdbStatusBadge } from '@/components/ui/AdbStatusBadge';
 import * as XLSX from 'xlsx';
 import { saveAs } from 'file-saver';
 import { StatusBadge, type Status as StatusType } from '@/components/ui/StatusBadge';
@@ -848,7 +847,7 @@ export default function ContactsPage() {
       <header className="shrink-0 z-20 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 shadow-sm">
         <div className="px-2 md:px-6 py-2 md:py-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 md:gap-4">
           <div className="mb-2 sm:mb-0">
-            <AdbStatusBadge />
+            <h1 className="text-2xl font-bold tracking-tight text-gray-200">DimiCall</h1>
           </div>
           <div className="flex-grow w-full p-2 border rounded-lg border-border overflow-hidden">
             <Ribbon 
@@ -925,16 +924,23 @@ export default function ContactsPage() {
         </div>
           </div>
           
-          <footer className="shrink-0 mt-auto pt-4 pb-2 text-center text-xs text-muted-foreground flex items-center justify-between">
+          <footer className="shrink-0 mt-auto pt-4 pb-2 text-xs text-muted-foreground flex items-center justify-between">
             <div>
               {autosaveFileHandle && <span className="text-green-600">(Autosave activé)</span>}
               {isAutosaveSaving && <span className="ml-2"><Loader2 className="h-3 w-3 animate-spin inline-block" /> Sauvegarde auto...</span>}
             </div>
             <div className="font-medium text-center mx-auto">
-              <span className="text-sm">{contacts.length} contact{contacts.length === 1 ? '' : 's'}</span>
+              <span className="text-sm">{filteredContacts.length} contact{filteredContacts.length === 1 ? '' : 's'}</span>
             </div>
             <div>
-              {/* Espace réservé pour équilibrer la mise en page */}
+              <div className="flex items-center space-x-2 px-3 py-1.5 text-sm font-medium rounded-md border border-red-600/50" data-state="closed" data-slot="tooltip-trigger">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-circle-x h-5 w-5 text-red-600" aria-hidden="true">
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <path d="m15 9-6 6"></path>
+                  <path d="m9 9 6 6"></path>
+                </svg>
+                <span className="text-red-600 whitespace-nowrap">Déconnecté</span>
+              </div>
             </div>
           </footer>
       </main>

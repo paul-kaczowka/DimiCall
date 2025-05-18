@@ -39,6 +39,7 @@ import { fr } from 'date-fns/locale';
 import { Calendar } from '@/components/ui/calendar';
 import { MultiColorSwitch } from '@/components/ui/multicolor-switch';
 import { StatusProgressChart } from "@/components/ui/StatusProgressChart";
+import { FnKeyButton } from '@/components/ui/FnKeyButton';
 
 // TODO: Remplacez "votre-nom-utilisateur/votre-type-d-evenement" par votre slug d'événement Cal.com réel
 // Utilisation du calLink fourni par l'utilisateur
@@ -1011,6 +1012,24 @@ export const Ribbon = React.forwardRef<HTMLDivElement, RibbonProps>((
             </TooltipContent>
           </Tooltip>
         </TooltipProvider>
+        
+        <FnKeyButton 
+          mappings={[
+            { keyName: "F2", statusName: "Mauvais num" },
+            { keyName: "F3", statusName: "Répondeur" },
+            { keyName: "F4", statusName: "À rappeler" },
+            { keyName: "F5", statusName: "Pas intéressé" },
+            { keyName: "F6", statusName: "Argumenté" },
+            { keyName: "F7", statusName: "D0" },
+            { keyName: "F8", statusName: "R0" },
+            { keyName: "F9", statusName: "Liste noire" },
+            { keyName: "F10", statusName: "Prématuré" }
+          ]}
+          onToggleFnMode={() => {
+            console.log('Mode touches Fn toggled');
+            // Implémentation de la logique pour activer/désactiver le mode touches Fn
+          }}
+        />
       </div>
 
       {/* Modal pour la création d'email */}
