@@ -40,7 +40,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { cn, initAnimationStyles } from '@/lib/utils';
 import type { Contact as ContactSchemaType } from '@/lib/schemas/contact';
-import { FunctionKeyStatusMappingGuide, type StatusMapping } from '@/components/ui/FunctionKeyStatusMappingGuide';
+import { type StatusMapping } from '@/components/ui/FunctionKeyStatusMappingGuide';
 import { AdbStatusBadge } from '@/components/ui/AdbStatusBadge';
 import * as XLSX from 'xlsx';
 import { saveAs } from 'file-saver';
@@ -900,8 +900,7 @@ export default function ContactsPage() {
                   className="w-full"
           />
           </div>
-              <FunctionKeyStatusMappingGuide mappings={fnKeyMappings} className="mt-2 sm:mt-0 w-full sm:w-auto" />
-        </div>
+            </div>
             <div 
               ref={tableViewportRef} 
               className="overflow-auto contain-paint will-change-transform"
@@ -928,9 +927,14 @@ export default function ContactsPage() {
           
           <footer className="shrink-0 mt-auto pt-4 pb-2 text-center text-xs text-muted-foreground flex items-center justify-between">
             <div>
-              <span>{contacts.length} contact{contacts.length === 1 ? '' : 's'}</span>
-              {autosaveFileHandle && <span className="ml-2 text-green-600">(Autosave activé)</span>}
+              {autosaveFileHandle && <span className="text-green-600">(Autosave activé)</span>}
               {isAutosaveSaving && <span className="ml-2"><Loader2 className="h-3 w-3 animate-spin inline-block" /> Sauvegarde auto...</span>}
+            </div>
+            <div className="font-medium text-center mx-auto">
+              <span className="text-sm">{contacts.length} contact{contacts.length === 1 ? '' : 's'}</span>
+            </div>
+            <div>
+              {/* Espace réservé pour équilibrer la mise en page */}
             </div>
           </footer>
       </main>
