@@ -48,6 +48,7 @@ import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { TimePickerOnly } from '@/components/ui/TimePickerOnly';
 import { fr } from 'date-fns/locale';
+import { AdbStatusBadge } from '@/components/ui/AdbStatusBadge';
 
 // Au début du fichier, sous les imports, ajouter l'extension de Window
 declare global {
@@ -933,14 +934,7 @@ export default function ContactsPage() {
               <span className="text-sm">{filteredContacts.length} contact{filteredContacts.length === 1 ? '' : 's'}</span>
             </div>
             <div>
-              <div className="flex items-center space-x-2 px-3 py-1.5 text-sm font-medium rounded-md border border-red-600/50" data-state="closed" data-slot="tooltip-trigger">
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-circle-x h-5 w-5 text-red-600" aria-hidden="true">
-                  <circle cx="12" cy="12" r="10"></circle>
-                  <path d="m15 9-6 6"></path>
-                  <path d="m9 9 6 6"></path>
-                </svg>
-                <span className="text-red-600 whitespace-nowrap">Déconnecté</span>
-              </div>
+              <AdbStatusBadge />
             </div>
           </footer>
       </main>
