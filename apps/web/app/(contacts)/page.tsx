@@ -184,6 +184,8 @@ export default function ContactsPage() {
     hangUpCallAction,
     initialActionState as ActionState<ContactAppType | null>
   );
+  // L'état pour clearAllDataAction n'est plus géré par useActionState ici
+  // car nous appelons clearAllDataAction directement et attendons son résultat.
   
   // Fonctions wrappers sécurisées pour les appels d'action
   const safeImportAction = useCallback((formData: FormData) => {
@@ -191,7 +193,7 @@ export default function ContactsPage() {
       importFormAction(formData);
     });
   }, [importFormAction]);
-  
+
   const safeUpdateContactAction = useCallback((formData: FormData) => {
     startTransition(() => {
       updateContactFormAction(formData);
@@ -728,23 +730,37 @@ export default function ContactsPage() {
     safeUpdateContactAction(formData);
   }, [activeContact, safeUpdateContactAction]);
 
-  const processFileForImport = (file: File) => {
-    const formData = new FormData();
-    formData.append('file', file);
-    const acceptedTypes = [".csv", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "application/vnd.ms-excel"];
-    const fileExtension = "." + file.name.split('.').pop()?.toLowerCase();
-    const isTypeAccepted = acceptedTypes.some(type => {
-      if (type.startsWith('.')) return fileExtension === type;
-      return file.type === type;
+  const processFileForImport = async (file: File) => {
+    toast.info("Suppression des contacts existants avant l'importation...");
+    
+    startTransition(async () => {
+      const clearResult = await clearAllDataAction(); // Appel direct de l'action serveur
+      if (clearResult.success) {
+        toast.success("Contacts existants supprimés avec succès.");
+        
+        const formData = new FormData();
+        formData.append('file', file);
+        const acceptedTypes = [".csv", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "application/vnd.ms-excel"];
+        const fileExtension = "." + file.name.split('.').pop()?.toLowerCase();
+        const isTypeAccepted = acceptedTypes.some(type => {
+          if (type.startsWith('.')) return fileExtension === type;
+          return file.type === type;
+        });
+
+        if (!isTypeAccepted) {
+          toast.error(`Type de fichier non supporté: ${file.name}. Veuillez utiliser un fichier CSV ou Excel.`);
+          if (inputFileRef.current) inputFileRef.current.value = "";
+          return;
+        }
+        
+        toast.info("Début de l'importation du nouveau fichier...");
+        safeImportAction(formData); // Nouvel appel via le wrapper
+
+      } else {
+        toast.error(`Échec de la suppression des contacts : ${clearResult.message}`);
+        // Optionnel: ne pas importer si la suppression échoue.
+      }
     });
-
-    if (!isTypeAccepted) {
-      toast.error(`Type de fichier non supporté: ${file.name}. Veuillez utiliser un fichier CSV ou Excel.`);
-      if (inputFileRef.current) inputFileRef.current.value = "";
-      return;
-    }
-
-    safeImportAction(formData);
   };
 
   const handleFileSelectedForImport = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -1003,26 +1019,26 @@ export default function ContactsPage() {
           <div className='flex-grow'> 
             <div className="mb-2 sm:mb-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 sm:gap-4">
               <div className="w-full sm:w-auto">
-          <TableSearchBar
-            columns={searchableColumns}
-            initialSelectedColumnValue={selectedSearchColumn}
+                <TableSearchBar
+                  columns={searchableColumns}
+                  initialSelectedColumnValue={selectedSearchColumn}
                   initialSearchTerm={searchTerm}
                   onSearchChange={handleSearchChange}
                   className="w-full"
-          />
-          </div>
+                />
+              </div>
             </div>
             <div 
               ref={tableViewportRef} 
               className="overflow-auto contain-paint will-change-transform"
               style={{ maxHeight: 'calc(100vh - 300px)' }} 
             >
-              {isLoading ? (
-                <div className="flex items-center justify-center h-[300px]">
-                  <Loader2 className="h-12 w-12 animate-spin text-primary" />
-                </div>
-              ) : (
-                <DndProvider backend={HTML5Backend}>
+              <DndProvider backend={HTML5Backend}>
+                {isLoading ? (
+                  <div className="flex items-center justify-center h-[300px]">
+                    <Loader2 className="h-12 w-12 animate-spin text-primary" />
+                  </div>
+                ) : (
                   <ContactTable
                     data={filteredContacts}
                     onEditContact={handleEditContactInline}
@@ -1033,9 +1049,9 @@ export default function ContactsPage() {
                     }
                     error={updateContactState.success === false ? updateContactState.message : null}
                   />
-                </DndProvider>
-              )}
-        </div>
+                )}
+              </DndProvider>
+            </div>
           </div>
           
           <footer className="shrink-0 mt-auto pt-4 pb-2 text-xs text-muted-foreground flex items-center justify-between">
@@ -1050,7 +1066,7 @@ export default function ContactsPage() {
               <AdbStatusBadge />
             </div>
           </footer>
-      </main>
+        </main>
 
         <aside 
           ref={panelRef}
@@ -1194,8 +1210,8 @@ export default function ContactsPage() {
                                     handleEditContactInline({ id: activeContact.id, status: newStatus });
                                   }}
                                 />
-          </div>
-        </div>
+                              </div>
+                            </div>
                           </div>
                         </div>
                         <div className="py-1 group relative">
@@ -1242,7 +1258,7 @@ export default function ContactsPage() {
                                 }}
                               >
                                 {activeContact.source || "Source du contact"}
-        </div>
+                              </div>
                             </div>
                           </div>
                         </div>
@@ -1343,8 +1359,8 @@ export default function ContactsPage() {
                                   />
                                 </PopoverContent>
                               </Popover>
-        </div>
-      </div>
+                            </div>
+                          </div>
                         </div>
                         <div className="py-1 group relative">
                           <div className="flex items-start space-x-3">
@@ -1436,7 +1452,7 @@ export default function ContactsPage() {
                                   />
                                 </PopoverContent>
                               </Popover>
-        </div>
+                            </div>
                           </div>
                         </div>
                         <div className="py-1 group relative">
@@ -1548,7 +1564,6 @@ export default function ContactsPage() {
                         event.stopPropagation();
                         const commentContainer = event.currentTarget.closest('section')?.querySelector('[role="button"]') as HTMLElement;
                         if (commentContainer) {
-                          // Simuler un clic sur le conteneur de commentaire pour lancer l'édition
                           commentContainer.click();
                         }
                       }}
@@ -1598,17 +1613,8 @@ export default function ContactsPage() {
                 </section>
               </div>
             </div>
-          ) : (
-            <div className="p-0 flex flex-col h-full">
-              <div className="flex-grow p-4 space-y-3 overflow-y-auto scrollbar-thin scrollbar-thumb-muted scrollbar-track-transparent">
-                <div className="flex flex-col items-center justify-center h-full">
-                  <User className="h-16 w-16 text-muted-foreground mb-4" />
-                  <p className="text-lg font-medium text-muted-foreground">Aucun contact sélectionné</p>
-                  <p className="text-sm text-muted-foreground text-center">Veuillez sélectionner un contact dans la liste pour voir ses détails.</p>
-                </div>
-              </div>
-            </div>
-          ))}
+          ) : null /* Temporairement mis à null */
+          )}
         </aside>
       </div>
 
@@ -1647,29 +1653,28 @@ export default function ContactsPage() {
       )}
 
       {isClearConfirmOpen && (
-      <AlertDialog open={isClearConfirmOpen} onOpenChange={setIsClearConfirmOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
+        <AlertDialog open={isClearConfirmOpen} onOpenChange={setIsClearConfirmOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
               <AlertDialogTitle>Êtes-vous sûr?</AlertDialogTitle>
-            <AlertDialogDescription>
+              <AlertDialogDescription>
                 Cette action est irréversible et supprimera définitivement toutes les données des contacts.
                 Voulez-vous vraiment continuer ?
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
               <AlertDialogCancel onClick={() => setIsClearConfirmOpen(false)}>Annuler</AlertDialogCancel>
               <AlertDialogAction
                 onClick={confirmClearAllData}
                 className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               >
                 Tout effacer
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       )}
 
-      {/* Bouton flottant pour raccrocher */}
       {contactInCallId && (
         <div className="fixed bottom-8 right-8 z-50">
           <TooltipProvider>
