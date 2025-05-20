@@ -5,6 +5,7 @@ import { cn } from '@/lib/utils';
 import * as React from 'react';
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { isValid } from 'date-fns';
+import { X } from 'lucide-react';
 
 // ---------- utils start ----------
 /**
@@ -120,6 +121,15 @@ export function TimePickerOnly({
     const date = currentDate ?? new Date(new Date().setHours(0,0,0,0));
     return isValid(date) ? date : new Date();
   };
+  
+  const handleClearTime = () => {
+    setCurrentDate(undefined);
+    onChange?.(undefined);
+    if (onSave && onClosePopover) {
+      onSave(undefined);
+      onClosePopover();
+    }
+  };
 
   const selectedHour = currentDate ? (hourCycle === 12 ? display12HourValue(currentDate.getHours()) : currentDate.getHours()) : null;
   const selectedMinute = currentDate ? currentDate.getMinutes() : null;
@@ -132,7 +142,22 @@ export function TimePickerOnly({
   // Ou pour chaque minute: const minutesArray = Array.from({ length: 60 }, (_, i) => i);
 
   return (
-    <div className={cn("flex items-stretch", className)}>
+    <div className={cn("flex items-stretch relative", className)}>
+      {/* Bouton de suppression de l'heure */}
+      {currentDate && (
+        <div className="absolute top-2 right-2 z-10">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-6 w-6 rounded-full p-0 hover:bg-muted"
+            onClick={handleClearTime}
+            type="button"
+          >
+            <X className="h-4 w-4 text-muted-foreground" />
+          </Button>
+        </div>
+      )}
+
       <ScrollArea className="h-60 w-20 border-r">
         <div className="flex flex-col p-1 items-center">
           {hoursArray.map((hour) => (

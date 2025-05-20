@@ -52,6 +52,7 @@ class ContactBase(BaseModel):
     dateAppel: Union[str, None] = None
     heureAppel: Union[str, None] = None
     dureeAppel: Union[str, None] = None
+    callStartTime: Union[str, None] = None # AJOUTÉ: Heure de début d'appel ISO UTC
     source: Union[str, None] = None
 
 class ContactUpdate(BaseModel): # Nouveau modèle pour la mise à jour partielle
@@ -69,6 +70,7 @@ class ContactUpdate(BaseModel): # Nouveau modèle pour la mise à jour partielle
     heureAppel: Union[str, None] = None
     dureeAppel: Union[str, None] = None
     source: Union[str, None] = None
+    callStartTime: Union[str, None] = None # AJOUTÉ: Heure de début d'appel ISO UTC
 
 class ContactInDB(ContactBase):
     id: str
@@ -177,6 +179,8 @@ async def process_imported_file(file_contents: bytes, content_type: str):
             'mail': 'email',
             'téléphone': 'phoneNumber',
             'telephone': 'phoneNumber',
+            'numero': 'phoneNumber',  # Ajout du mappage pour "Numéro"
+            'numéro': 'phoneNumber',  # Ajout du mappage pour "Numéro" avec accent
             'prenom': 'firstName',
             'nomdefamille': 'lastName',
             'statut': 'status',
@@ -706,16 +710,19 @@ async def update_contact(contact_id: str, contact_update_data: ContactUpdate) ->
         
         idx = contact_index[0]
 
-        # Mettre à jour uniquement les champs fournis dans contact_update_data
+        # Mettre à jour uniquement les champs fournis dans update_data_dict
         update_data_dict = contact_update_data.model_dump(exclude_unset=True)
         
         # Formater le numéro de téléphone s'il est présent dans les données de mise à jour
-        if 'phoneNumber' in update_data_dict:
+        if 'phoneNumber' in update_data_dict and update_data_dict['phoneNumber'] is not None: # AJOUT: conditionner le formatage
             update_data_dict['phoneNumber'] = format_phone_number(update_data_dict['phoneNumber'])
             # Si le formatage retourne None et que le champ était explicitement envoyé à None,
             # il sera stocké comme None (ou chaîne vide si le DataFrame l'impose plus tard, à vérifier).
             # Si le formatage retourne None pour un numéro invalide qui n'était pas None,
             # il sera aussi stocké comme None.
+        elif 'phoneNumber' in update_data_dict and update_data_dict['phoneNumber'] is None:
+            # Permettre de mettre explicitement le numéro de téléphone à None
+             update_data_dict['phoneNumber'] = None
 
         if not update_data_dict: # Si aucun champ n'est fourni pour la mise à jour
             # On pourrait retourner le contact existant sans modification ou une erreur 304 Not Modified
@@ -736,15 +743,12 @@ async def update_contact(contact_id: str, contact_update_data: ContactUpdate) ->
         
         # Appliquer les mises à jour au DataFrame
         for field, value in update_data_dict.items():
-            # Si le champ est phoneNumber, il a déjà été formaté
-            # La valeur None est permise pour phoneNumber (pour le supprimer)
-            if value is not None or field == 'phoneNumber': 
+            # Autoriser les valeurs NULL pour tous les champs liés aux dates et heures
+            if value is not None or field == 'phoneNumber' or field == 'callStartTime' or field == 'email' or field.startswith('date') or field.startswith('heure'):
                 df.loc[idx, field] = value
             # Pour les autres champs que phoneNumber, si la valeur est None et qu'ils ne peuvent pas être None,
             # on pourrait vouloir les ignorer ou les convertir en une chaîne vide (déjà géré par Pydantic ou DataFrame?)
             # Actuellement, on permet de mettre à jour avec None si le modèle Pydantic le permet.
-            # Pour email, on a mis fillna('') à l'import, donc un None ici deviendrait NaN puis chaîne vide.
-            # Pour phoneNumber, le formatage gère le None. Il sera stocké comme None/NaN dans le DataFrame.
 
         df.to_parquet(CONTACTS_STORAGE_FILE, index=False)
         
@@ -931,11 +935,11 @@ async def check_call_status():
     Vérifie via ADB si un appel téléphonique est en cours.
     Retourne le statut de l'appel (en cours ou non).
     """
-    print("[API] Requête pour vérifier si un appel est en cours")
+    print("[API GET /call/status] Requête pour vérifier si un appel est en cours")
     try:
         # Utiliser dumpsys telephony.registry pour vérifier l'état de l'appel
         command = ["adb", "shell", "dumpsys", "telephony.registry"]
-        print(f"[API] Exécution de la commande ADB : {' '.join(command)}")
+        print(f"[API GET /call/status] Exécution de la commande ADB : {' '.join(command)}")
         
         process = await asyncio.create_subprocess_exec(
             *command,
@@ -949,6 +953,7 @@ async def check_call_status():
             # Chercher des indicateurs d'un appel en cours
             call_in_progress = False
             call_state_line = None
+            call_state = None
             
             for line in output.splitlines():
                 if "mCallState" in line:
@@ -964,21 +969,35 @@ async def check_call_status():
                     except ValueError:
                         continue
             
+            # Si nous n'avons pas trouvé mCallState, essayer d'autres méthodes de détection
+            if call_state_line is None:
+                # Essayer avec une autre commande pour plus de certitude
+                print("[API GET /call/status] Méthode principale échouée, tentative alternative...")
+                try:
+                    alt_output = run_adb_command(["shell", "dumpsys", "telecom"], timeout_seconds=5)
+                    call_in_progress = "ongoing call" in alt_output.lower() or "active connections" in alt_output.lower()
+                    print(f"[API GET /call/status] Détection alternative: appel en cours = {call_in_progress}")
+                except Exception as alt_error:
+                    print(f"[API GET /call/status] Erreur lors de la détection alternative: {alt_error}")
+            
+            print(f"[API GET /call/status] Résultat: appel en cours = {call_in_progress}, état = {call_state}")
+            
             return {
                 "status": "success",
                 "call_in_progress": call_in_progress,
+                "call_state": call_state,
                 "call_state_raw": call_state_line if call_state_line else "Non trouvé"
             }
         else:
             error_message = stderr.decode('utf-8', errors='replace') if stderr else "Erreur ADB inconnue"
-            print(f"[API] Erreur lors de la commande ADB. Error: {error_message}")
+            print(f"[API GET /call/status] Erreur lors de la commande ADB. Error: {error_message}")
             raise HTTPException(status_code=500, detail=f"Erreur ADB: {error_message}")
             
     except FileNotFoundError:
-        print("[API] Erreur: Commande ADB non trouvée.")
+        print("[API GET /call/status] Erreur: Commande ADB non trouvée.")
         raise HTTPException(status_code=500, detail="Commande ADB non trouvée.")
     except Exception as e:
-        print(f"[API] Erreur inattendue lors de la vérification du statut d'appel: {e}")
+        print(f"[API GET /call/status] Erreur inattendue lors de la vérification du statut d'appel: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 # Fonction utilitaire pour formater la durée
@@ -1003,12 +1022,48 @@ async def adb_hangup_call(request_body: Optional[HangUpRequest] = Body(None)): #
         contact_id_info = f" (Info contact ID: {request_body.contact_id})"
     
     print(f"[API POST /adb/hangup] Requête pour raccrocher l'appel{contact_id_info}.")
+    # Obtenir l'heure de fin d'appel UTC effective AVANT d'envoyer la commande ADB, au cas où la commande prend du temps
+    # ou pour avoir une référence temporelle si la commande elle-même ne retourne pas d'heure.
+    effective_hang_up_time_utc = datetime.now(timezone.utc)
+    
     try:
         # Commande ADB pour raccrocher. KEYCODE_ENDCALL est un bon point de départ.
+        print(f"[API DEBUG /adb/hangup] Envoi de la commande KEYCODE_ENDCALL via ADB{contact_id_info}")
         run_adb_command(["shell", "input", "keyevent", "KEYCODE_ENDCALL"])
+        
+        # Vérifier si l'appel est vraiment terminé
+        print(f"[API DEBUG /adb/hangup] Vérification que l'appel est bien terminé{contact_id_info}")
+        try:
+            call_status_output = run_adb_command(["shell", "dumpsys", "telephony.registry"], timeout_seconds=8)
+            call_active = "mCallState=2" in call_status_output  # 2 = CALL_STATE_OFFHOOK
+            if call_active:
+                print(f"[API DEBUG /adb/hangup] Première tentative échouée, l'appel semble toujours actif. Tentative de secours{contact_id_info}")
+                # Seconde tentative avec une autre méthode
+                run_adb_command(["shell", "input", "keyevent", "KEYCODE_POWER"], timeout_seconds=5) # Appuyer sur Power peut parfois interrompre un appel
+                run_adb_command(["shell", "input", "keyevent", "KEYCODE_ENDCALL"], timeout_seconds=5) # Réessayer avec ENDCALL
+                
+                # Vérifier à nouveau
+                call_status_output = run_adb_command(["shell", "dumpsys", "telephony.registry"], timeout_seconds=8)
+                call_still_active = "mCallState=2" in call_status_output
+                if call_still_active:
+                    print(f"[API DEBUG /adb/hangup] ATTENTION: L'appel semble toujours actif après seconde tentative{contact_id_info}")
+                else:
+                    print(f"[API DEBUG /adb/hangup] Seconde tentative réussie, l'appel est bien terminé{contact_id_info}")
+            else:
+                print(f"[API DEBUG /adb/hangup] L'appel a été correctement terminé à la première tentative{contact_id_info}")
+        except Exception as verify_error:
+            print(f"[API DEBUG /adb/hangup] Erreur lors de la vérification du statut d'appel: {str(verify_error)}")
+            # On continue même s'il y a une erreur dans la vérification
+        
+        # Après que la commande de raccrochage ADB a été envoyée (et supposée réussie par run_adb_command)
         message = f"Commande de raccrochage envoyée avec succès{contact_id_info}."
         print(f"[API POST /adb/hangup] {message}")
-        return {"message": message, "status": "success"}
+        
+        return {
+            "message": message, 
+            "status": "success",
+            "hang_up_time_utc": effective_hang_up_time_utc.isoformat() # Renvoyer l'heure de fin
+        }
     except HTTPException as e:
         # Rediffuser l'exception HTTP si elle vient de run_adb_command
         # ou la transformer si nécessaire
@@ -1162,4 +1217,9 @@ async def get_autosave_file(file_path: str):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Erreur lors de la récupération du fichier: {str(e)}"
-        ) 
+        )
+
+# Ajout d'un endpoint /health pour vérifier que l'API est en ligne
+@app.get("/health", summary="Vérifier la santé de l'API")
+async def health_check():
+    return {"status": "OK"} 

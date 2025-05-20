@@ -621,6 +621,7 @@ export const DateTimePicker = React.forwardRef<Partial<DateTimePickerRef>, DateT
             initialFocus
             locale={locToUse}
             defaultMonth={selectedDate || defaultPopupValue}
+            className="rounded-md border"
           />
           {granularity !== 'day' && (
             <div className="border-border border-t p-3">

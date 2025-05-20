@@ -6,7 +6,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 import { type Locale, enUS } from 'date-fns/locale';
-import { Calendar as CalendarIcon } from 'lucide-react';
+import { Calendar as CalendarIcon, X } from 'lucide-react';
 import * as React from 'react';
 import { useImperativeHandle, useRef } from 'react';
 
@@ -253,8 +253,16 @@ interface TimePickerProps {
 }
 
 function TimePicker({ date, onChange, hourCycle = 24, granularity = 'second' }: TimePickerProps) {
-  const [period, setPeriod] = React.useState<Period>(date && date.getHours() >= 12 ? 'PM' : 'AM');
-  
+  // État pour le cycle de 12 heures AM/PM
+  const [period, setPeriod] = React.useState<Period>(
+    date && date.getHours() >= 12 ? 'PM' : 'AM'
+  );
+
+  // Refs pour les champs d'heures, minutes et secondes
+  const hoursRef = useRef<HTMLInputElement | null>(null);
+  const minutesRef = useRef<HTMLInputElement | null>(null);
+  const secondsRef = useRef<HTMLInputElement | null>(null);
+
   React.useEffect(() => {
     if (date) {
       setPeriod(date.getHours() >= 12 ? 'PM' : 'AM');
@@ -262,15 +270,26 @@ function TimePicker({ date, onChange, hourCycle = 24, granularity = 'second' }: 
   }, [date]);
 
   const handleDateChange = (newDatePart: Date) => {
-    onChange?.(newDatePart);
+    if (onChange) {
+      onChange(newDatePart);
+    }
   };
 
-  const minutesRef = useRef<HTMLInputElement>(null);
-  const hoursRef = useRef<HTMLInputElement>(null);
-  const secondsRef = useRef<HTMLInputElement>(null);
-
   return (
-    <div className="flex items-center justify-center gap-2">
+    <div className="flex items-center justify-center gap-2 relative">
+      {date && (
+        <Button
+          variant="ghost"
+          size="sm"
+          className="absolute -right-8 top-0 h-6 w-6 rounded-full p-0 hover:bg-muted"
+          onClick={() => onChange?.(undefined)}
+          type="button"
+        >
+          <X className="h-4 w-4 text-muted-foreground" />
+          <span className="sr-only">Effacer l&apos;heure</span>
+        </Button>
+      )}
+      
       <div className="flex h-10 items-center">
         <TimePickerInput
           picker={hourCycle === 24 ? 'hours' : '12hours'}
@@ -301,6 +320,12 @@ function TimePicker({ date, onChange, hourCycle = 24, granularity = 'second' }: 
                 period,
               ),
             );
+          }}
+          onLeftFocus={() => {
+            secondsRef.current?.focus();
+          }}
+          onRightFocus={() => {
+            minutesRef.current?.focus();
           }}
         />
       </div>
@@ -447,6 +472,11 @@ const DateTimePicker = React.forwardRef<Partial<DateTimePickerRef>, DateTimePick
       setDisplayDate(selectedDate);
     };
     
+    const handleClearDate = () => {
+      onChange?.(undefined);
+      setDisplayDate(undefined);
+    };
+    
     useImperativeHandle(
       ref,
       () => ({
@@ -472,30 +502,45 @@ const DateTimePicker = React.forwardRef<Partial<DateTimePickerRef>, DateTimePick
 
     return (
       <Popover>
-        <PopoverTrigger asChild disabled={disabled}>
-          <Button
-            variant="outline"
-            className={cn(
-              'w-full justify-start text-left font-normal',
-              !displayDate && 'text-muted-foreground',
-              className,
-            )}
-            ref={buttonRef}
-          >
-            <CalendarIcon className="mr-2 h-4 w-4" />
-            {displayDate ? (
-              format(
-                displayDate,
-                hourCycle === 24 ? initHourFormat.hour24 : initHourFormat.hour12,
-                {
-                  locale: loc,
-                },
-              )
-            ) : (
-              <span>{placeholder}</span>
-            )}
-          </Button>
-        </PopoverTrigger>
+        <div className="relative w-full">
+          <PopoverTrigger asChild disabled={disabled}>
+            <Button
+              variant="outline"
+              className={cn(
+                'w-full justify-start text-left font-normal',
+                !displayDate && 'text-muted-foreground',
+                className,
+              )}
+              ref={buttonRef}
+            >
+              <CalendarIcon className="mr-2 h-4 w-4" />
+              {displayDate ? (
+                format(
+                  displayDate,
+                  hourCycle === 24 ? initHourFormat.hour24 : initHourFormat.hour12,
+                  {
+                    locale: loc,
+                  },
+                )
+              ) : (
+                <span>{placeholder}</span>
+              )}
+            </Button>
+          </PopoverTrigger>
+          
+          {displayDate && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="absolute right-0 top-0 h-full aspect-square rounded-r-md p-0 hover:bg-muted"
+              onClick={handleClearDate}
+              type="button"
+            >
+              <X className="h-4 w-4 text-muted-foreground" />
+              <span className="sr-only">Effacer la date et l&apos;heure</span>
+            </Button>
+          )}
+        </div>
         <PopoverContent className="w-auto p-0">
           <Calendar
             mode="single"
@@ -505,6 +550,7 @@ const DateTimePicker = React.forwardRef<Partial<DateTimePickerRef>, DateTimePick
             locale={loc}
             defaultMonth={displayDate ?? defaultPopupValue ?? new Date()}
             numberOfMonths={1}
+            className="rounded-md border"
           />
           {granularity !== 'day' && (
             <div className="border-border border-t p-3">

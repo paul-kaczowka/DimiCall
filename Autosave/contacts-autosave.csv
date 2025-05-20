@@ -1,13 +1,47 @@
-firstName,lastName,email,phoneNumber,status,comment,dateRappel,heureRappel,dateRendezVous,heureRendezVous,dateAppel,heureAppel,dureeAppel,source,id
-Paul,Albreg,A.A@ieseg.fr,+33 6 95 90 58 12,D0,,,,,,17/05/2025,17:48:15,00:00:04,,8a1d5876-2422-4392-8f30-faca8740a1bd
-Pierre,Bruton,B.B@ieseg.fr,+33 6 95 90 58 12,Pas intéressé,,,,,,17/05/2025,17:48:29,,,f7264c4d-8035-4b28-98e5-2006fc151625
-Sarah,Carap,paul.kaczowka@ieseg.fr,+33 6 95 90 58 12,R0,,,,,,17/05/2025,18:03:41,00:00:04,,3ea25567-3908-4350-8801-2f708cad0867
-Dimitri,D,paul.kaczowka@ieseg.fr,+33 6 95 90 58 12,Répondeur,,,,,,17/05/2025,18:04:07,,,0c1273c7-706f-41ac-989d-fcf6eb51a3f8
-Elise,E,paul.kaczowka@ieseg.fr,+33 6 95 90 58 12,Répondeur,,,,,,17/05/2025,18:16:48,00:00:04,,47ca933f-cb1f-4d3d-8347-a3387dea3fa1
-Abdel,F,paul.kaczowka@ieseg.fr,+33 6 95 90 58 12,,,,,,,17/05/2025,18:17:02,,,f56c965b-a1d6-4c11-9eb1-1891e0c9b087
-Gérard,G,paul.kaczowka@ieseg.fr,+33 6 95 90 58 12,Argumenté,,,,,,17/05/2025,18:28:28,00:00:04,,e0ff0cfd-7898-40f0-a2c1-454023c0acb6
-Hubert,H,paul.kaczowka@ieseg.fr,+33 6 95 90 58 12,,,,,,,17/05/2025,18:28:32,,,f0d4c125-2fcf-4ff7-b0e8-9f0f664816d8
-Jeanne,J,paul.kaczowka@ieseg.fr,+33 6 95 90 58 12,Répondeur,,,,,,17/05/2025,18:44:38,00:00:04,,d0b64400-b1dd-4903-884e-8ab835f39f77
-Babo,J,paul.kaczowka@ieseg.fr,+33 6 95 90 58 12,,,,,,,17/05/2025,18:44:42,,,6e976c3b-2761-4549-9e9e-85dce03c4e79
-Siturne,J,paul.kaczowka@ieseg.fr,+33 6 95 90 58 12,,,,,,,18/05/2025,21:17:26,,,1987416f-128a-4a6c-907a-cd39ab756b99
-polkm,J,paul.kaczowka@ieseg.fr,+33 6 95 90 58 12,,,,,,,,,,,77cf4284-ecb4-4532-8ddf-70720ef0d4f0
+firstName,lastName,email,phoneNumber,status,comment,dateRappel,heureRappel,dateRendezVous,heureRendezVous,dateAppel,heureAppel,dureeAppel,callStartTime,source,id
+Boubacar,DIALLO,d.boubacar@outlook.fr,+33 6 13 70 50 34,,,,,2025-05-29T22:00:00.000Z,04:25,,,,,,f9084d5e-d3e4-48c1-aff4-08f841c7c8d1
+Cherif,DIALLO,mamadoucherifdiallo224@gmail.com,+33 6 50 86 87 66,,,,,2025-05-30T22:00:00.000Z,19:18,,,,,,7004a5b0-af56-409a-9ca2-6e608707dbca
+Dalanda,DIALLO,diallodd2@gmail.com,+33 6 26 92 53 14,,,,,2025-07-31,18:09,,,,,,dcd92f41-5b56-4a32-8005-050963c21abf
+Daloba,DIALLO,dalobadiallo96@gmail.com,+330695648511,,,,,,,,,,,,9d1136ba-7ec6-4566-aec1-aa8f1478a759
+Houssaïnatou,Diallo,houssainatoudiallo93@gmail.com,+33 7 81 38 01 62,,,,,,,,,,,,cb96e4d3-9539-4db1-901b-3ebf48054d1c
+Mamadou,DIALLO,boboval85@yahoo.fr,+33 7 54 25 87 39,,,,,,,,,,,,d0e81208-95cc-4960-a4cd-d042bee1e66b
+Moussa,DIALLO,damouss781@gmail.com,+330605814132,,,,,,,,,,,,b554873e-c57b-414a-ac5f-9452dcadf298
+Oury,DIALLO,amadououri95@gmail.com,+33 7 51 91 95 04,,,,,,,,,,,,a0c9e043-ad26-4e7c-8f28-39f2a714392f
+Thiam,DIALLO,amina.thiam@gmail.com,+33 6 15 83 99 56,,,,,,,,,,,,1b5e5845-4e38-42dc-81d1-ffb58cc5aab4
+Thierno,Diallo,thiernodiallo.lyon2@gmail.com,+33 6 05 55 64 84,,,,,,,,,,,,f8cb8616-2118-482c-bcf1-52db46eb726e
+Thierno,diallo IBRAHIMA,diallothiernoibrahima615@gmail.com,+33 7 58 73 97 56,,,,,,,,,,,,6453372a-3946-42a4-8805-1f09866650fd
+Marthe,diana MESSERLIN,md.messerlin@gmail.com,+33 6 71 78 78 90,,,,,,,,,,,,dc21b243-62bf-4374-9b08-46d4c2d1eed3
+Adam,DIARASSOUBA,ddb.adam@gmail.com,+33 7 52 70 26 75,,,,,,,,,,,,2df9d015-b73c-4cd2-be0f-4a3da1ea834b
+Kevin,DIAS TEIXEIRA,kevin.diasteixeira@live.fr,+33 6 59 07 88 74,,,,,,,,,,,,2269c34a-ad7a-4b48-9a85-e6d73187cff4
+Dior,DIAW,diorsarata@gmail.com,+330778131205,,,,,,,,,,,,ebca5146-14b9-4974-b75b-5646a9433b1d
+Lassana,DIAWARA,diawara.lassana@laposte.net,+33 6 12 88 63 29,,,,,,,,,,,,47b2466a-5280-44ec-ad24-04ce34bc36ae
+Oumar,Diawara,papusdia@gmail.com,+33 6 16 90 80 29,,,,,,,,,,,,bf23f9ce-692d-4363-900b-da79eda22647
+Edouard,Dickoum,jules-Edouard.abouem-dickoum@efrei.net,+33 6 63 46 07 06,,,,,,,,,,,,96812abd-dabc-4f1e-9eda-ed4995a02cca
+Rudy,DIDACE,rudy.gbaguidikouam@skema.edu,+33 1 23 50 21 29,,,,,,,,,,,,3af23942-6142-4d25-92f0-62e08824d723
+Arthur,DIDIER,arthur.didier@imt-atlantique.net,+33 6 38 01 26 38,,,,,,,,,,,,7b463bee-e502-4ef1-bfaa-8159e5a3849a
+Léa,DIDIO,lea.didio@edu.escpeurope.eu,+33 6 16 38 22 09,,,,,,,,,,,,d812abf3-8346-4269-aa87-fd8a71f80ecf
+Audrey,Diederichs,audrey.diederichs@gmail.com,+33 7 68 89 67 09,,,,,,,,,,,,5bcbf4be-3627-411f-b186-f076a9bebe29
+Maryline,DIENI,marylinedieni@yahoo.fr,+330760776793,,,,,,,,,,,,ba111c96-cb7e-41de-9f27-b9d1ba1837ce
+Aurore,DIEPTONG,auroredieptong6@gmail.com,+33 7 58 76 22 57,,,,,,,,,,,,6e9bff02-1099-4417-925a-fff5f2f1d3a0
+Etienne,Dietrich,etiennedietrich@gmail.com,+33 6 36 43 42 41,,,,,,,,,,,,e7248d37-3835-4de4-8f1f-3718b2afb717
+Alain,DIGEOS,alandig@yahoo.co.uk,+33 4 78 58 48 80,,,,,,,,,,,,ab750f68-af5a-4f6c-a860-fa28ad8b9fe1
+Des,Digitale Marques,romane.grandmaire@gmail.com,+33 6 50 94 04 82,,,,,,,,,,,,0658722a-4931-4883-b933-c4d912bb48ed
+Flavien,DIMARTINO,flavien.dimartino@gmail.com,+330686187901,,,,,,,,,,,,e601a8e5-4341-46a0-94ae-ec4c34e8e275
+Benjamin,DIMIER,benjamin.dimier@hotmail.fr,+33 6 79 34 58 34,,,,,,,,,,,,3bfc06ee-7030-4416-9a68-5a82d447f89e
+Pascal,DIMIER,pdimier@outlook.com,+33 6 52 06 49 92,,,,,,,,,,,,bb62569c-94e2-40d4-9d1d-e3d58e4374cd
+Saty,DIOMANDE,dsatykadi@yahoo.com,+33 7 69 29 74 27,,,,,,,,,,,,3fcdcd3e-a32b-40ec-9ca1-c73692545932
+Ibrahima,DIONE,iboudd@hotmail.fr,+33 6 66 65 54 58,,,,,,,,,,,,51667b4d-948e-43e2-ba72-ee245169b8d1
+Florent,DIONIS,florent.dionis@outlook.fr,+330680124118,,,,,,,,,,,,ad3475ca-4c64-4361-b2c4-12e54f66d169
+Deina,DIOP,meddeyna@yahoo.fr,+33 6 01 16 66 38,,,,,,,,,,,,e416c7c2-3c68-4723-9c7d-8e7449eec45b
+Demba,DIOP,demba.dioop@gmail.com,+33 6 95 63 76 82,,,,,,,,,,,,17a4beb6-53a7-42f8-8de7-e3bea94c19f1
+Khady,DIOP,khadydiop214@gmail.com,+33 7 66 88 66 90,,,,,,,,,,,,5fec6117-637c-490d-8446-ed2de6ca7a9c
+Souleymane,DIOP,souleymanediop2000@hotmail.com,+33 6 59 86 88 44,,,,,,,,,,,,1454c7c8-e199-44f4-856d-7756793cbd25
+Chérif,DIOUF,cherif.diouf.2014@utt.fr,+330679644502,,,,,,,,,,,,637e0542-0bbe-4d06-814f-b6182713d796
+Djibril,DIOUF,diouf.djibril@gmail.com,+33 6 13 53 03 27,,,,,,,,,,,,17d4213e-bfd4-461b-b153-f0dba1dc008d
+Elhadji,DIOUF,elhadjitaiboudiouf@gmail.com,+330605710027,,,,,,,,,,,,e2b04649-9974-4ddb-81d5-29d076192a44
+Marie,Diouf,marydiouf098@gmail.com,+33 6 56 81 27 73,,,,,,,,,,,,ea122003-483d-49d0-a8db-d5b431290347
+Pierre,DIOUF,alioupierre.diouf@outlook.com,+33 6 46 69 16 56,,,,,,,,,,,,4ea1f871-c031-423d-ae2f-5594cf373cd2
+Bara,DIOUKHANE,bara.dioukhane98@gmail.com,+33 6 95 69 83 74,,,,,,,,,,,,36172ca3-eb25-4159-973b-37b9f0f2720b
+Omar,DJAALAL,omar_iup@hotmail.com,+33 6 15 68 12 96,,,,,,,,,,,,6017cc51-1b67-47cf-a0ec-b448b0a099b8
+Demba,DJAOUNE,demba.djaoune@edu.escp.eu,+33 6 45 77 70 46,,,,,,,,,,,,e6aeafa6-e229-4c2b-9e9d-a34588f47c95
+Mme,DJEDJIGA NAIT,djedjiga.nait@gmail.com,+33 6 03 02 85 48,,,,,,,,,,,,0943be61-ab42-4ce1-8e3b-4fb6669f0371

@@ -23,6 +23,7 @@ export const contactSchema = z.object({
   role: zStringOptional,
   bookingDate: zStringOptional,
   bookingTime: zStringOptional,
+  callStartTime: zStringOptional,
 }).strict();
 
 export const contactsSchema = z.array(contactSchema);

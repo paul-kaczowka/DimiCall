@@ -26,7 +26,6 @@ import { Contact } from '@/types/contact'; // Assurez-vous que ce chemin est cor
 import {
   TableBody,
   TableCell,
-  TableHead,
   TableHeader,
   TableRow,
   Table,
@@ -49,6 +48,7 @@ import {
   PhoneOutgoing
 } from 'lucide-react';
 import { cn, formatPhoneNumber } from '@/lib/utils';
+import { DraggableTableHead } from "@/components/ui/DraggableTableHead"; // Ajouté
 
 // Définir les props pour ContactTable
 interface ContactTableProps {
@@ -106,9 +106,12 @@ export const ContactTable = React.memo(function ContactTableComponent({
   isProcessingId, 
   error 
 }: ContactTableProps) {
-  const [columnPinning, setColumnPinning] = React.useState<ColumnPinningState>({}); // Aucune colonne figée par défaut
-  const [activeRowId, setActiveRowId] = React.useState<string | null>(null); // Garder l'ID pour la surbrillance
+  const [columnPinning, setColumnPinning] = React.useState<ColumnPinningState>({});
+  const [activeRowId, setActiveRowId] = React.useState<string | null>(null);
   const [isScrollContainerReady, setIsScrollContainerReady] = React.useState(false);
+
+  // AJOUT: État pour l'ordre des colonnes
+  const [columnOrder, setColumnOrder] = React.useState<string[]>([]);
 
   // Optimiser la fonction de clic sur une ligne - POSITIONNER AVANT D'AUTRES HOOKS
   const handleRowClick = React.useCallback((row: Row<Contact>) => {
@@ -149,6 +152,7 @@ export const ContactTable = React.memo(function ContactTableComponent({
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const columns = React.useMemo<ColumnDef<Contact, any>[]>(() => [
     {
+      id: 'firstName', // Assurez-vous que chaque colonne a un ID unique
       accessorKey: 'firstName',
       header: () => <IconHeader icon={User} text="Prénom" />,
       cell: (info) => {
@@ -159,6 +163,7 @@ export const ContactTable = React.memo(function ContactTableComponent({
       meta: { isPinned: true },
     },
     {
+      id: 'lastName', // Assurez-vous que chaque colonne a un ID unique
       accessorKey: 'lastName',
       header: () => <IconHeader icon={User} text="Nom" />,
       cell: (info) => {
@@ -169,6 +174,7 @@ export const ContactTable = React.memo(function ContactTableComponent({
       meta: { isPinned: true },
     },
     {
+      id: 'email', // Assurez-vous que chaque colonne a un ID unique
       accessorKey: 'email',
       header: () => <IconHeader icon={Mail} text="Email" />,
       cell: (info) => {
@@ -178,6 +184,7 @@ export const ContactTable = React.memo(function ContactTableComponent({
       size: 250,
     },
     {
+      id: 'phoneNumber', // Assurez-vous que chaque colonne a un ID unique
       accessorKey: 'phoneNumber',
       header: () => <IconHeader icon={Phone} text="Téléphone" />,
       cell: (info) => {
@@ -189,6 +196,7 @@ export const ContactTable = React.memo(function ContactTableComponent({
       size: 180,
     },
     {
+      id: 'status', // Assurez-vous que chaque colonne a un ID unique
       accessorKey: 'status',
       header: () => <IconHeader icon={Info} text="Statut" />,
       cell: ({ row, table }) => {
@@ -215,6 +223,7 @@ export const ContactTable = React.memo(function ContactTableComponent({
       size: 120, // Vous pouvez ajuster la taille si nécessaire pour le badge/dropdown
     },
     {
+      id: 'comment', // Assurez-vous que chaque colonne a un ID unique
       accessorKey: 'comment',
       header: () => <IconHeader icon={MessageSquareText} text="Commentaire" />,
       cell: (info) => {
@@ -224,6 +233,7 @@ export const ContactTable = React.memo(function ContactTableComponent({
       size: 200,
     },
     {
+      id: 'dateRappel', // Assurez-vous que chaque colonne a un ID unique
       accessorKey: 'dateRappel',
       header: () => <IconHeader icon={BellRing} text="Date Rappel" />,
       cell: (info) => {
@@ -234,6 +244,7 @@ export const ContactTable = React.memo(function ContactTableComponent({
       meta: { cellType: 'date' },
     },
     {
+      id: 'heureRappel', // Assurez-vous que chaque colonne a un ID unique
       accessorKey: 'heureRappel',
       header: () => <IconHeader icon={Clock} text="Heure Rappel" />,
       cell: (info) => {
@@ -244,6 +255,7 @@ export const ContactTable = React.memo(function ContactTableComponent({
       meta: { cellType: 'time' },
     },
     {
+      id: 'dateRendezVous', // Assurez-vous que chaque colonne a un ID unique
       accessorKey: 'dateRendezVous',
       header: () => <IconHeader icon={CalendarDays} text="Date RDV" />,
       cell: (info) => {
@@ -254,6 +266,7 @@ export const ContactTable = React.memo(function ContactTableComponent({
       meta: { cellType: 'date' },
     },
     {
+      id: 'heureRendezVous', // Assurez-vous que chaque colonne a un ID unique
       accessorKey: 'heureRendezVous',
       header: () => <IconHeader icon={Clock} text="Heure RDV" />,
       cell: (info) => {
@@ -264,6 +277,7 @@ export const ContactTable = React.memo(function ContactTableComponent({
       meta: { cellType: 'time' },
     },
     {
+      id: 'dateAppel', // Assurez-vous que chaque colonne a un ID unique
       accessorKey: 'dateAppel',
       header: () => <IconHeader icon={PhoneOutgoing} text="Date Appel" />,
       cell: (info) => {
@@ -274,6 +288,7 @@ export const ContactTable = React.memo(function ContactTableComponent({
       meta: { cellType: 'date' },
     },
      {
+      id: 'heureAppel', // Assurez-vous que chaque colonne a un ID unique
       accessorKey: 'heureAppel',
       header: () => <IconHeader icon={Clock} text="Heure Appel" />,
       cell: (info) => {
@@ -284,12 +299,14 @@ export const ContactTable = React.memo(function ContactTableComponent({
       meta: { cellType: 'time' },
     },
     {
+      id: 'dureeAppel', // Assurez-vous que chaque colonne a un ID unique
       accessorKey: 'dureeAppel',
       header: () => <IconHeader icon={Hourglass} text="Durée Appel" />,
       cell: (info) => <DureeAppelCell contactId={info.row.original.id} value={info.getValue()} />,
       size: 80,
     },
     {
+      id: 'source', // Assurez-vous que chaque colonne a un ID unique
       accessorKey: 'source',
       header: () => <IconHeader icon={Waypoints} text="Source" />,
       cell: (info) => {
@@ -328,21 +345,35 @@ export const ContactTable = React.memo(function ContactTableComponent({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   ], []);
 
+  // AJOUT: Initialiser columnOrder basé sur les colonnes initiales
+  React.useEffect(() => {
+    setColumnOrder(columns.map(c => c.id!)); // Utiliser l'id de ColumnDef
+  }, [columns]);
+
   const table = useReactTable<Contact>({
     data,
     columns,
     getCoreRowModel: getCoreRowModel(),
     columnResizeMode: 'onChange', 
-    state: { // Ajout de l'état du columnPinning ici
+    state: {
       columnPinning,
+      columnOrder, // AJOUT: Passer columnOrder à l'état de la table
     },
-    onColumnPinningChange: setColumnPinning, // Permettre la modification du pinning
-    getRowId: (originalRow) => originalRow.id, // Utiliser l'ID du contact comme ID de ligne
+    onColumnOrderChange: setColumnOrder, // AJOUT: Gérer les changements d'ordre
+    onColumnPinningChange: setColumnPinning,
+    getRowId: (originalRow) => originalRow.id,
     meta: {
       onEditContact,
-      // onDeleteContact, // Supprimé
-    } as TableMeta // TableMeta est maintenant plus simple
+    } as TableMeta
   });
+
+  // AJOUT: Fonction pour déplacer les colonnes
+  const moveColumn = (dragIndex: number, hoverIndex: number) => {
+    const newColumnOrder = [...columnOrder];
+    const draggedColumnId = newColumnOrder.splice(dragIndex, 1)[0];
+    newColumnOrder.splice(hoverIndex, 0, draggedColumnId);
+    setColumnOrder(newColumnOrder);
+  };
 
   const { rows } = table.getRowModel();
 
@@ -396,12 +427,16 @@ export const ContactTable = React.memo(function ContactTableComponent({
                 key={headerGroup.id}
                 style={{ display: 'flex', width: '100%' }}
               >
-                {headerGroup.headers.map(header => (
-                  <TableHead 
+                {headerGroup.headers.map((header) => {
+                  const columnId = header.column.id;
+                  return (
+                    <DraggableTableHead
                     key={header.id}
+                      id={columnId}
+                      index={columnOrder.indexOf(columnId)}
+                      header={header}
+                      moveColumn={moveColumn}
                     style={{
-                      display: 'flex',
-                      alignItems: 'center',
                       width: header.getSize(),
                       position: header.column.getIsPinned() ? 'sticky' : 'relative',
                       left: header.column.getIsPinned() === 'left' ? `${header.column.getStart('left')}px` : undefined,
@@ -409,15 +444,9 @@ export const ContactTable = React.memo(function ContactTableComponent({
                       zIndex: header.column.getIsPinned() ? 5 : 0,
                     }}
                     className="whitespace-nowrap bg-background"
-                  >
-                    {header.isPlaceholder
-                      ? null
-                      : flexRender(
-                          header.column.columnDef.header,
-                          header.getContext()
-                        )}
-                  </TableHead>
-                ))}
+                    />
+                  );
+                })}
               </TableRow>
             ))}
           </TableHeader>

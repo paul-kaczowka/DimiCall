@@ -13,7 +13,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 interface DateTimePicker24hProps {
   onDateTimeSelected: (date: Date) => void;
@@ -114,53 +114,58 @@ export function DateTimePicker24h({
         {PopoverTriggerContent}
       </PopoverTrigger>
       <PopoverContent className="w-auto p-0">
-        <div className="sm:flex">
+        <div className="p-3">
           <Calendar
             mode="single"
             selected={date}
             onSelect={handleDateSelect}
             initialFocus
-            locale={fr} 
-            captionLayout="dropdown-buttons"
-            fromYear={new Date().getFullYear() - 5}
-            toYear={new Date().getFullYear() + 5}
+            locale={fr}
+            className="rounded-md border"
           />
-          <div className="flex flex-col sm:flex-row sm:h-[300px] divide-y sm:divide-y-0 sm:divide-x border-t sm:border-t-0 sm:border-l">
-            <ScrollArea className="h-[150px] sm:h-auto sm:w-auto">
-              <div className="flex sm:flex-col p-2 gap-1">
-                {hours.map((hour) => (
-                  <Button
-                    key={`hour-${hour}`}
-                    size="sm" 
-                    variant={date && date.getHours() === hour ? "default" : "ghost"}
-                    className="sm:w-full shrink-0 aspect-square sm:aspect-auto" 
-                    onClick={() => handleTimeChange("hour", hour.toString())}
-                  >
-                    {hour.toString().padStart(2, '0')}
-                  </Button>
-                ))}
-              </div>
-              <ScrollBar orientation="horizontal" className="sm:hidden" />
-            </ScrollArea>
-            <ScrollArea className="h-[150px] sm:h-auto sm:w-auto">
-              <div className="flex sm:flex-col p-2 gap-1">
-                {Array.from({ length: 12 }, (_, i) => i * 5).map((minute) => (
-                  <Button
-                    key={`minute-${minute}`}
-                    size="sm" 
-                    variant={date && date.getMinutes() === minute ? "default" : "ghost"}
-                    className="sm:w-full shrink-0 aspect-square sm:aspect-auto"
-                    onClick={() => handleTimeChange("minute", minute.toString())}
-                  >
-                    {minute.toString().padStart(2, '0')}
-                  </Button>
-                ))}
-              </div>
-              <ScrollBar orientation="horizontal" className="sm:hidden" />
-            </ScrollArea>
+        </div>
+        {/* Sélection de l'heure */}
+        <div className="p-3 border-t flex flex-col gap-2">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <h4 className="text-sm font-medium mb-2">Heure</h4>
+              <ScrollArea className="h-40">
+                <div className="grid grid-cols-4 gap-1">
+                  {hours.map((hour) => (
+                    <Button
+                      key={`hour-${hour}`}
+                      size="sm"
+                      variant={date && date.getHours() === hour ? "default" : "outline"}
+                      onClick={() => handleTimeChange("hour", hour.toString())}
+                      className="text-xs"
+                    >
+                      {hour.toString().padStart(2, '0')}
+                    </Button>
+                  ))}
+                </div>
+              </ScrollArea>
+            </div>
+            <div>
+              <h4 className="text-sm font-medium mb-2">Minute</h4>
+              <ScrollArea className="h-40">
+                <div className="grid grid-cols-4 gap-1">
+                  {Array.from({ length: 12 }, (_, i) => i * 5).map((minute) => (
+                    <Button
+                      key={`minute-${minute}`}
+                      size="sm"
+                      variant={date && date.getMinutes() === minute ? "default" : "outline"}
+                      onClick={() => handleTimeChange("minute", minute.toString())}
+                      className="text-xs"
+                    >
+                      {minute.toString().padStart(2, '0')}
+                    </Button>
+                  ))}
+                </div>
+              </ScrollArea>
+            </div>
           </div>
         </div>
-        <div className="p-2 border-t flex justify-end">
+        <div className="p-3 border-t flex justify-end">
           <Button onClick={handleConfirm} disabled={!date}>Confirmer</Button>
         </div>
       </PopoverContent>

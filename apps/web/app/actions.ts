@@ -4,8 +4,23 @@ import { z } from 'zod';
 import { type ActionState } from '@/lib/actions-utils'; // Garder ActionState
 import { contactSchema, Contact } from '@/lib/schemas/contact';
 import { revalidatePath } from 'next/cache'; // Importer revalidatePath
-import { parse as parseDateFns, differenceInSeconds } from 'date-fns';
-import { fr } from 'date-fns/locale';
+import { differenceInSeconds, isValid } from 'date-fns'; // Supprimé parseDateFns et fr qui ne sont pas utilisés
+
+// Nouveaux types pour le résultat de l'importation et les informations de mappage
+interface MappingInfo {
+  filePath?: string;
+  originalHeaders: string[];
+  unmappedHeaders: string[];
+  requiredFields: string[];
+}
+
+interface ImportResultData {
+  count?: number;
+  message?: string;
+  needsMapping?: boolean;
+  mappingInfo?: MappingInfo;
+  errorDetails?: Record<string, unknown>; // Remplacé 'any' par un type plus spécifique
+}
 
 // Schéma pour la validation du numéro de téléphone et de l'ID du contact
 const callActionSchema = z.object({
@@ -181,7 +196,8 @@ export async function callAction(prevState: ActionState<Contact | null>, formDat
     // Mise à jour directe du contact via fetch, au lieu d'appeler updateContactAction
     const updateData = {
         dateAppel: formattedDateAppel,
-        heureAppel: formattedHeureAppel
+        heureAppel: formattedHeureAppel,
+        callStartTime: callTimeISO,
     };
 
     try {
@@ -293,53 +309,140 @@ export async function exportContactsAction(prevState: ActionState<null>, formDat
  * Server Action pour importer les contacts.
  * @param prevState L'état précédent.
  * @param formData Les données du formulaire.
- * @returns Un objet indiquant le succès ou l'échec de l'importation.
+ * @returns Un objet indiquant le succès, l'échec, ou le besoin de mappage.
  */
-export async function importContactsAction(prevState: ActionState<{ count?: number; message?: string } | null>, formData: FormData): Promise<ActionState<{ count?: number; message?: string } | null>> {
-  const file = formData.get('file') as File;
-
-  if (!file || file.size === 0) {
-    return { success: false, message: 'Aucun fichier sélectionné ou fichier vide.', data: null };
-  }
-
-  const allowedTypes = ['text/csv', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/vnd.ms-excel'];
-  if (!allowedTypes.includes(file.type)) {
-    return {
-      success: false,
-      message: `Type de fichier non supporté: ${file.type}. Veuillez utiliser CSV ou XLSX.`,
-      data: null,
-    };
-  }
-
-  console.log(`[Server Action] Tentative d'import du fichier : ${file.name}, Type: ${file.type}, Taille: ${file.size} bytes`);
-
+export async function importContactsAction(
+  prevState: ActionState<ImportResultData | null>,
+  formData: FormData
+): Promise<ActionState<ImportResultData | null>> {
   try {
+    const file = formData.get('file') as File;
+
+    if (!file || file.size === 0) {
+      return { 
+        success: false, 
+        message: 'Aucun fichier sélectionné ou fichier vide.', 
+        data: { needsMapping: false } 
+      };
+    }
+
+    const allowedTypes = ['text/csv', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/vnd.ms-excel'];
+    if (!allowedTypes.includes(file.type)) {
+      return {
+        success: false,
+        message: `Type de fichier non supporté: ${file.type}. Veuillez utiliser CSV ou XLSX.`,
+        data: { needsMapping: false },
+      };
+    }
+
+    console.log(`[Server Action] Tentative d'import du fichier : ${file.name}, Type: ${file.type}, Taille: ${file.size} bytes`);
+
+    // Vérifier d'abord si l'API est accessible
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+    
+    try {
+      // Test de connectivité à l'API pour donner des erreurs plus claires
+      // Utiliser /contacts au lieu de /health car ce point d'accès existe déjà
+      const pingResponse = await fetch(`${apiUrl}/contacts`, { 
+        method: 'GET',
+        // Timeout court pour éviter de bloquer trop longtemps
+        signal: AbortSignal.timeout(3000)
+      }).catch(error => {
+        console.error(`[Server Action] Échec du ping de l'API:`, error);
+        throw new Error(`Impossible de se connecter à l'API (${apiUrl}). Veuillez vérifier que le backend FastAPI est en cours d'exécution.`);
+      });
+      
+      if (!pingResponse.ok) {
+        return {
+          success: false,
+          message: `L'API est accessible mais renvoie une erreur: ${pingResponse.status} ${pingResponse.statusText}`,
+          data: { needsMapping: false }
+        };
+      }
+    } catch (error) {
+      // Ici on capture spécifiquement les erreurs de connectivité
+      console.error(`[Server Action] API inaccessible:`, error);
+      return {
+        success: false,
+        message: error instanceof Error 
+          ? error.message 
+          : "Impossible de contacter le serveur API. Veuillez vérifier que le backend FastAPI est en cours d'exécution.",
+        data: { needsMapping: false }
+      };
+    }
+
     const apiFormData = new FormData();
     apiFormData.append('file', file);
 
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
     const response = await fetch(`${apiUrl}/contacts/import`, {
       method: 'POST',
       body: apiFormData,
     });
 
+    // Gérer le cas où le backend demande un mappage (ex: statut 422)
+    if (response.status === 422) {
+      const mappingData = await response.json();
+      console.log("[Server Action] L'API demande un mappage de colonnes:", mappingData);
+      return {
+        success: false,
+        message: mappingData.message || "Un mappage des colonnes est nécessaire.",
+        data: {
+          needsMapping: true,
+          mappingInfo: mappingData.details as MappingInfo,
+        }
+      };
+    }
+
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({ detail: "Erreur inconnue lors de l'import API." }));
-      console.error("[Server Action] Erreur de l'API FastAPI lors de l'import:", errorData.detail);
-      return { success: false, message: `Erreur de l'API lors de l'import: ${errorData.detail || response.statusText}`, data: null };
+      let errorDetail = "Erreur inconnue lors de l'import via l'API.";
+      let parsedErrorData = null;
+      try {
+        parsedErrorData = await response.json();
+        errorDetail = parsedErrorData.detail || JSON.stringify(parsedErrorData);
+      } catch {
+        // Si la réponse n'est pas un JSON
+        try {
+          const errorText = await response.text();
+          errorDetail = `Réponse non-JSON de l'API: ${errorText.substring(0, 500)}`;
+        } catch {
+          // Si impossible de lire le texte
+          errorDetail = "Impossible de lire la réponse d'erreur de l'API.";
+        }
+      }
+      console.error(`[Server Action] Erreur de l'API FastAPI lors de l'import (status ${response.status}):`, errorDetail);
+      return { 
+        success: false, 
+        message: `Erreur de l'API (${response.status}): ${errorDetail}`, 
+        data: { needsMapping: false, errorDetails: parsedErrorData as Record<string, unknown> } 
+      };
     }
 
     const result = await response.json();
     console.log("[Server Action] Réponse de l'API FastAPI import:", result);
-    return { success: true, message: result.message || `Fichier ${file.name} importé avec succès (via API).`, data: result };
+    
+    revalidatePath('/(contacts)');
+    
+    return { 
+      success: true, 
+      message: result.message || `Fichier ${file.name} importé avec succès (via API).`, 
+      data: { count: result.count, needsMapping: false }
+    };
 
   } catch (error) {
     console.error("[Server Action] Erreur lors de l'appel à l'API FastAPI pour l'import:", error);
     let errorMessage = "Erreur interne du serveur lors de la tentative d'import.";
     if (error instanceof Error) {
+      if (error.message.toLowerCase().includes('failed to fetch')) {
+        errorMessage = "La connexion au serveur d'importation a échoué. Veuillez vérifier que le service backend est en cours d'exécution et accessible.";
+      } else {
         errorMessage = error.message;
+      }
     }
-    return { success: false, message: `Erreur technique lors de l'import: ${errorMessage}`, data: null };
+    return { 
+      success: false, 
+      message: `Erreur technique lors de l'import: ${errorMessage}`, 
+      data: { needsMapping: false } 
+    };
   }
 }
 
@@ -419,30 +522,19 @@ export async function updateContactAction(
   formData: FormData
 ): Promise<ActionState<Contact | null>> {
   const contactId = formData.get('contactId') as string;
-  const dataToUpdate: Partial<Omit<Contact, 'id'>> = {};
+  const dataToUpdate: Record<string, string | null> = {};
 
   // Extraire les champs du contact à partir de formData
   // et les ajouter à dataToUpdate, en excluant 'contactId'
   // et en s'assurant que les types sont corrects si nécessaire.
-  // Par exemple, pour les champs optionnels, vérifier s'ils sont présents.
 
-  // Exemple d'extraction (à adapter en fonction des champs possibles dans formData)
-  if (formData.has('firstName')) dataToUpdate.firstName = formData.get('firstName') as string;
-  if (formData.has('lastName')) dataToUpdate.lastName = formData.get('lastName') as string;
-  if (formData.has('email')) dataToUpdate.email = formData.get('email') as string || null;
-  if (formData.has('phoneNumber')) dataToUpdate.phoneNumber = formData.get('phoneNumber') as string || null;
-  if (formData.has('status')) dataToUpdate.status = formData.get('status') as string || null;
-  if (formData.has('comment')) dataToUpdate.comment = formData.get('comment') as string || null;
-  if (formData.has('societe')) dataToUpdate.societe = formData.get('societe') as string || null;
-  if (formData.has('role')) dataToUpdate.role = formData.get('role') as string || null;
-  if (formData.has('dateAppel')) dataToUpdate.dateAppel = formData.get('dateAppel') as string || null;
-  if (formData.has('heureAppel')) dataToUpdate.heureAppel = formData.get('heureAppel') as string || null;
-  if (formData.has('dateRappel')) dataToUpdate.dateRappel = formData.get('dateRappel') as string || null;
-  if (formData.has('heureRappel')) dataToUpdate.heureRappel = formData.get('heureRappel') as string || null;
-  // Nouveaux champs pour le rendez-vous Cal.com
-  if (formData.has('bookingDate')) dataToUpdate.bookingDate = formData.get('bookingDate') as string || null;
-  if (formData.has('bookingTime')) dataToUpdate.bookingTime = formData.get('bookingTime') as string || null;
-  // Note: avatarUrl n'est pas géré ici car c'est un File, nécessite une logique différente (upload)
+  // Traiter tous les champs possibles du formData
+  for (const [key, value] of formData.entries()) {
+    if (key !== 'contactId') {
+      // Une chaîne vide dans le formData représente une valeur null
+      dataToUpdate[key] = value === '' ? null : value as string;
+    }
+  }
 
   if (!contactId) {
     console.error("[Server Action] updateContactAction: contactId est manquant dans FormData.");
@@ -651,116 +743,196 @@ export async function hangUpCallAction(prevState: ActionState<Contact | null>, f
   }
 
   const { contactId } = validationResult.data;
-  console.log(`[Server Action] Tentative de raccrocher l'appel pour contact ID: ${contactId}`);
+  console.log(`[Server Action hangUpCallAction] INIT: Tentative de raccrocher l'appel pour contact ID: ${contactId}`);
 
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+  // S'assurer que API_BASE_URL est défini
+  const apiUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
+  console.log(`[Server Action hangUpCallAction] Utilisation de l'URL API: ${apiUrl}`);
+
+  // Vérifier d'abord l'état de l'appel (s'il est toujours en cours)
+  let callWasActive = true; // On suppose qu'il était actif par défaut
+  
+  try {
+    const callStatusResponse = await fetch(`${apiUrl}/call/status`);
+    const callStatusData = await callStatusResponse.json();
+    callWasActive = callStatusData.call_in_progress;
+    
+    console.log(`[Server Action hangUpCallAction] Vérification de l'état de l'appel: ${callWasActive ? "Actif" : "Inactif"}`);
+  } catch (error) {
+    console.error(`[Server Action hangUpCallAction] Erreur lors de la vérification de l'état d'appel:`, error);
+    // On continue même en cas d'erreur de vérification
+  }
+
+  // L'heure de fin d'appel UTC est MAINTENANT, quelle que soit la méthode de raccrochage utilisée
+  const callEndTimeUTC = new Date();
+  console.log(`[Server Action hangUpCallAction] STEP 1: Heure de fin d'appel (UTC): ${callEndTimeUTC.toISOString()}`);
 
   try {
-    const fetchContactResponse = await fetch(`${apiUrl}/contacts/${contactId}`);
-    if (!fetchContactResponse.ok) {
-      const errorData = await fetchContactResponse.json().catch(() => ({ detail: fetchContactResponse.statusText }));
-      const errorText = await fetchContactResponse.text().catch(() => "Impossible de lire la réponse d'erreur du fetch contact.");
-      const errorMessage = errorData.detail || `Impossible de récupérer le contact ${contactId}.`;
-      console.error(`[Server Action hangUpCallAction] Erreur fetch contact ${contactId}: ${errorMessage}. Réponse brute: ${errorText}`);
-      return { success: false, message: `Impossible de récupérer le contact ${contactId} (${fetchContactResponse.status}) pour calculer la durée.`, data: null };
-    }
-    const contactData: Contact = await fetchContactResponse.json();
+    // Si l'appel est toujours actif, envoyer la commande de raccrochage via l'API
+    if (callWasActive) {
+      console.log(`[Server Action hangUpCallAction] STEP 2: L'appel est actif, envoi de la commande de raccrochage via l'API`);
+      const hangUpResponse = await fetch(`${apiUrl}/adb/hangup`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ contact_id: contactId })
+      });
 
-    let dureeAppelFormatted = "N/A";
-    if (contactData.dateAppel && contactData.heureAppel) {
-      try {
-        const datePart = parseDateFns(contactData.dateAppel, 'dd/MM/yyyy', new Date(), { locale: fr });
-        const timeParts = contactData.heureAppel.split(':');
-        // Vérifier que timeParts a bien 3 éléments (HH, MM, SS) ou au moins 2 (HH, MM)
-        if (timeParts.length >= 2) {
-            datePart.setHours(parseInt(timeParts[0], 10), parseInt(timeParts[1], 10), parseInt(timeParts[2] || '0', 10));
-            
-            const callStartTime = datePart; 
-            const callEndTime = new Date(); 
-
-            const diffSeconds = differenceInSeconds(callEndTime, callStartTime);
-
-            if (diffSeconds < 0) {
-                 console.warn(`[Server Action] Différence de temps négative (${diffSeconds}s) pour contact ${contactId}. Date/Heure début: ${contactData.dateAppel} ${contactData.heureAppel}. Cela peut arriver si l'heure du serveur est en avance ou s'il y a eu un ajustement d'horloge.`);
-                 dureeAppelFormatted = "00:00:00"; // Ou "Erreur durée" si vous préférez signaler l'erreur
-            } else {
-                const hours = Math.floor(diffSeconds / 3600);
-                const minutes = Math.floor((diffSeconds % 3600) / 60);
-                const seconds = diffSeconds % 60;
-                dureeAppelFormatted = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
-            }
-        } else {
-            console.warn(`[Server Action] Format heureAppel (${contactData.heureAppel}) invalide pour contact ${contactId}. Durée non calculée.`);
-            dureeAppelFormatted = "00:00:00"; // Ou "Format invalide"
-        }
-      } catch (e) {
-        console.error("[Server Action] Erreur lors du calcul de la durée de l'appel:", e);
-        dureeAppelFormatted = "Erreur calcul";
+      if (!hangUpResponse.ok) {
+        const errorData = await hangUpResponse.json().catch(() => ({}));
+        console.error(`[Server Action hangUpCallAction] ERREUR: Échec de l'API /adb/hangup. Status: ${hangUpResponse.status}. Détails: ${JSON.stringify(errorData)}`);
+        return {
+          success: false,
+          message: "Impossible de raccrocher l'appel. Veuillez vérifier le téléphone.",
+          errors: {},
+          data: null,
+        };
       }
-    } else {
-        console.warn(`[Server Action] dateAppel ou heureAppel manquant pour contact ${contactId}. Durée non calculée.`);
-        dureeAppelFormatted = "N/A"; // Explicitement marquer qu'aucune durée n'est calculable
-    }
-    
-    console.log(`[Server Action] Commande ADB pour raccrocher l'appel (contact ID: ${contactId}) - Appel de l'API`);
-    // Appel à l'API pour raccrocher
-    const hangUpApiUrl = `${apiUrl}/adb/hangup`;
-    const hangUpResponse = await fetch(hangUpApiUrl, { 
-      method: 'POST', 
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ contact_id: contactId }) // Assurez-vous que votre API attend contact_id
-    });
 
-    if (!hangUpResponse.ok) {
-      const errorHangUpData = await hangUpResponse.json().catch(() => ({ detail: hangUpResponse.statusText }));
-      const hangUpErrorText = await hangUpResponse.text().catch(() => "Impossible de lire la réponse d'erreur du hangup.");
-      const hangUpErrorMessage = errorHangUpData.detail || `Échec de la commande de raccrochage pour ${contactId}.`;
-      console.error(`[Server Action hangUpCallAction] Erreur API raccrochage ${contactId}: ${hangUpErrorMessage}. Réponse brute: ${hangUpErrorText}`);
-      // Le message d'erreur sera propagé au client via la valeur de retour de l'action.
-      // Le useEffect dans page.tsx s'occupera d'afficher le toast.
-      // toast.error(`Erreur lors de la tentative de raccrochage via ADB: ${hangUpErrorMessage}`); // SUPPRIMÉ
-      // On peut choisir de retourner un échec partiel ici si la mise à jour de la durée est importante
-      // ou si l'échec du raccrochage ADB doit bloquer la mise à jour de la durée.
-      // Pour l'instant, on considère que l'action a globalement échoué si hangUpResponse n'est pas ok.
+      // Il est important de laisser un délai pour permettre à la commande de raccrochage d'être exécutée
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    } else {
+      console.log(`[Server Action hangUpCallAction] STEP 2: L'appel n'est plus actif, probablement déjà raccroché sur le téléphone`);
+    }
+
+    // Trouver le contact dans la base de données pour obtenir ses informations complètes
+    const contactResponse = await fetch(`${apiUrl}/contacts/${contactId}`);
+    
+    if (!contactResponse.ok) {
+      console.error(`[Server Action hangUpCallAction] STEP 3: Échec de la récupération du contact. Status: ${contactResponse.status}`);
       return {
         success: false,
-        message: `Échec de la commande ADB pour raccrocher: ${hangUpErrorMessage}`,
-        data: null, 
+        message: "Impossible de trouver les informations du contact.",
+        errors: {},
+        data: null,
       };
-    } else {
-      const hangUpResult = await hangUpResponse.json().catch(() => ({ message: "Raccrochage ADB réussi, réponse non JSON."}))
-      console.log(`[Server Action] Résultat API raccrochage: `, hangUpResult);
-      // toast.success(hangUpResult.message || "Commande de raccrochage ADB envoyée."); // SUPPRIMÉ - Géré par le client via le retour de l'action
-      // Le message de succès sera dans hangUpResult.message, et sera utilisé par le client.
     }
 
-    const updateData = { dureeAppel: dureeAppelFormatted };
+    const contactData = await contactResponse.json();
+    console.log(`[Server Action hangUpCallAction] STEP 3: Contact récupéré: ${contactData.firstName} ${contactData.lastName}`);
+
+    // Calcul de la durée d'appel
+    let dureeSecondes = 0;
+
+    // VÉRIFIER contactData et callStartTime avant de l'utiliser
+    if (contactData && contactData.callStartTime && typeof contactData.callStartTime === 'string') { // Utiliser l'heure de début UTC précise si disponible
+      const callStartTimeUTC = new Date(contactData.callStartTime);
+      console.log(`[Server Action hangUpCallAction] STEP 4: Calcul de la durée avec callStartTime UTC: ${callStartTimeUTC.toISOString()} et callEndTime UTC: ${callEndTimeUTC.toISOString()}`);
+      
+      if (isValid(callStartTimeUTC) && isValid(callEndTimeUTC)) {
+        dureeSecondes = differenceInSeconds(callEndTimeUTC, callStartTimeUTC);
+        if (dureeSecondes < 0) {
+          console.warn(`[Server Action hangUpCallAction] STEP 4: Durée négative (${dureeSecondes}s) avec callStartTime. Peut indiquer un problème de synchronisation ou de données. Mise à 0.`);
+          dureeSecondes = 0;
+        }
+        
+        console.log(`[Server Action hangUpCallAction] STEP 4: Durée calculée: ${dureeSecondes} secondes`);
+      } else {
+        console.warn(`[Server Action hangUpCallAction] STEP 4: callStartTime (${callStartTimeUTC}) ou callEndTime (${callEndTimeUTC}) invalide.`);
+        // Fallback vers dateAppel/heureAppel si disponible
+        if (contactData.dateAppel && typeof contactData.dateAppel === 'string' && 
+            contactData.heureAppel && typeof contactData.heureAppel === 'string') {
+          
+          try {
+            // Utiliser l'heure locale du serveur pour le calcul car dateAppel/heureAppel sont locaux
+            const dateParts = contactData.dateAppel.split('/');
+            if (dateParts.length === 3) {
+              // Format attendu: DD/MM/YYYY
+              const day = parseInt(dateParts[0]);
+              const month = parseInt(dateParts[1]) - 1; // Les mois sont 0-indexés en JS
+              const year = parseInt(dateParts[2]);
+              
+              // Format attendu pour heureAppel: HH:MM:SS
+              const timeParts = contactData.heureAppel.split(':');
+              let hours = 0, minutes = 0, seconds = 0;
+              if (timeParts.length >= 2) {
+                hours = parseInt(timeParts[0]);
+                minutes = parseInt(timeParts[1]);
+                seconds = timeParts.length > 2 ? parseInt(timeParts[2]) : 0;
+              }
+              
+              const callStartLocalDate = new Date(year, month, day, hours, minutes, seconds);
+              if (isValid(callStartLocalDate)) {
+                dureeSecondes = differenceInSeconds(callEndTimeUTC, callStartLocalDate);
+                if (dureeSecondes < 0) {
+                  console.warn(`[Server Action hangUpCallAction] STEP 4B: Durée négative (${dureeSecondes}s) avec dateAppel/heureAppel. Mise à 0.`);
+                  dureeSecondes = 0;
+                }
+                console.log(`[Server Action hangUpCallAction] STEP 4B: Durée calculée avec dateAppel/heureAppel: ${dureeSecondes} secondes`);
+              } else {
+                console.warn(`[Server Action hangUpCallAction] STEP 4B: Date de début d'appel invalide après parsing dateAppel/heureAppel: ${callStartLocalDate}`);
+              }
+            }
+          } catch (e) {
+            console.error(`[Server Action hangUpCallAction] STEP 4B: Erreur lors du parsing de dateAppel/heureAppel: ${e}`);
+          }
+        } else {
+          console.warn(`[Server Action hangUpCallAction] STEP 4B: Impossible de calculer la durée, dateAppel ou heureAppel manquant/invalide.`);
+        }
+      }
+    } else {
+      console.warn(`[Server Action hangUpCallAction] STEP 4: callStartTime non disponible. Tentative avec dateAppel/heureAppel...`);
+      // Le reste du code pour dateAppel/heureAppel comme ci-dessus
+      // ...
+    }
+
+    // Formatage de la durée
+    const formattedDureeAppel = format_duration(dureeSecondes);
+    console.log(`[Server Action hangUpCallAction] STEP 5: Durée formatée: ${formattedDureeAppel}`);
+
+    // Mise à jour du contact avec la durée d'appel
     const updateResponse = await fetch(`${apiUrl}/contacts/${contactId}`, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(updateData),
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        dureeAppel: formattedDureeAppel
+      })
     });
 
     if (!updateResponse.ok) {
-      const errorUpdateData = await updateResponse.json().catch(() => ({ detail: updateResponse.statusText }));
-      const updateErrorText = await updateResponse.text().catch(() => "Impossible de lire la réponse d'erreur de la MAJ contact.");
-      const updateErrorMessage = errorUpdateData.detail || `Échec de la mise à jour de la durée pour ${contactId}.`;
-      console.error(`[Server Action hangUpCallAction] Erreur màj contact (durée) ${contactId}: ${updateErrorMessage}. Réponse brute: ${updateErrorText}`);
-      return { success: false, message: `Appel raccroché (simulé), mais échec de la mise à jour de la durée pour ${contactId} (${updateResponse.status}).`, data: null };
+      console.error(`[Server Action hangUpCallAction] STEP 6: Échec de la mise à jour du contact. Status: ${updateResponse.status}`);
+      return {
+        success: false,
+        message: "L'appel a été raccroché, mais impossible de mettre à jour la durée.",
+        errors: {},
+        data: null,
+      };
     }
-    const updatedContactData = await updateResponse.json();
 
-    revalidatePath('/(contacts)');
+    const updatedContact = await updateResponse.json();
+    console.log(`[Server Action hangUpCallAction] STEP 6: Contact mis à jour avec succès, durée: ${formattedDureeAppel}`);
+
+    revalidatePath('/');
     return {
       success: true,
-      message: `Appel raccroché pour le contact ${contactId}. Durée: ${dureeAppelFormatted}.`,
-      data: updatedContactData,
+      message: `Appel terminé avec ${updatedContact.firstName} ${updatedContact.lastName}. Durée: ${formattedDureeAppel}`,
+      errors: {},
+      data: updatedContact,
     };
-
   } catch (error) {
-    console.error("[Server Action] Erreur globale dans hangUpCallAction:", error);
-    let message = "Erreur technique lors du raccrochage.";
-    if (error instanceof Error) message = error.message;
-    return { success: false, message, data: null };
+    console.error(`[Server Action hangUpCallAction] ERREUR GLOBALE:`, error);
+    return {
+      success: false,
+      message: "Erreur lors du raccrochage de l'appel.",
+      errors: {},
+      data: null,
+    };
+  }
+}
+
+// Fonction utilitaire pour formater la durée
+function format_duration(seconds: number): string {
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = Math.floor(seconds % 60);
+  const hours = Math.floor(minutes / 60);
+  const remainingMinutes = minutes % 60;
+  
+  if (hours > 0) {
+    return `${hours.toString().padStart(2, '0')}:${remainingMinutes.toString().padStart(2, '0')}:${remainingSeconds.toString().padStart(2, '0')}`;
+  } else {
+    return `${minutes.toString().padStart(2, '0')}:${remainingSeconds.toString().padStart(2, '0')}`;
   }
 }

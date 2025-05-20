@@ -24,22 +24,29 @@ import {
 import { cn } from '@/lib/utils';
 // import { AdbStatusBadge } from '@/components/ui/AdbStatusBadge'; // Supprimé
 import type { Contact } from '@/lib/schemas/contact';
-import { DateTimePicker24h } from './ui/DateTimePicker24h';
+// import { MinimalDatePicker } from '@/components/ui/MinimalDatePicker'; // Supprimé
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
   DialogFooter,
+  DialogDescription,
 } from "@/components/ui/dialog";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
-import { /* format, */ isValid } from 'date-fns';
-import { fr } from 'date-fns/locale';
-import { Calendar } from '@/components/ui/calendar';
+import { /* format, */ isValid, parseISO, format } from 'date-fns';
+// import { fr } from 'date-fns/locale'; // Supprimé car inutilisé
+// import { Calendar } from '@/components/ui/calendar'; // Supprimé car SimpleDateTimePicker est retiré
 import { MultiColorSwitch } from '@/components/ui/multicolor-switch';
 import { StatusProgressChart } from "@/components/ui/StatusProgressChart";
 import { FnKeyButton } from '@/components/ui/FnKeyButton';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { Input } from "@/components/ui/input";
 
 // TODO: Remplacez "votre-nom-utilisateur/votre-type-d-evenement" par votre slug d'événement Cal.com réel
 // Utilisation du calLink fourni par l'utilisateur
@@ -319,96 +326,22 @@ N'hésitez pas à revenir vers moi en cas de question ou d'un besoin supplément
 Bien cordialement,`
 };
 
-// Composant sélecteur de date et heure personnalisé
+// Composant sélecteur de date et heure personnalisé - SUPPRIMÉ
+/*
 const SimpleDateTimePicker = ({ 
   date, 
-  setDate
+  setDate,
+  initialDate, 
+  initialTime 
 }: { 
   date: Date | undefined, 
-  setDate: (date: Date | undefined) => void 
+  setDate: (date: Date | undefined) => void,
+  initialDate?: string | null, 
+  initialTime?: string | null  
 }) => {
-  const hours = Array.from({ length: 24 }, (_, i) => i);
-  
-  const handleDateSelect = (selectedDate: Date | undefined) => {
-    if (selectedDate && isValid(selectedDate)) {
-      const newDateToSet = date ? new Date(date) : new Date();
-      newDateToSet.setFullYear(selectedDate.getFullYear());
-      newDateToSet.setMonth(selectedDate.getMonth());
-      newDateToSet.setDate(selectedDate.getDate());
-      if (!date) { 
-        newDateToSet.setHours(14, 0, 0, 0); // Heure par défaut: 14h
-      }
-      setDate(newDateToSet);
-    }
-  };
-
-  const handleTimeChange = (
-    type: "hour" | "minute",
-    value: string
-  ) => {
-    const newDateToSet = date ? new Date(date) : new Date(); 
-    if (type === "hour") {
-      newDateToSet.setHours(parseInt(value));
-    } else if (type === "minute") {
-      newDateToSet.setMinutes(parseInt(value));
-    }
-    if (isValid(newDateToSet)) {
-      setDate(newDateToSet);
-    }
-  };
-
-  return (
-    <div className="mt-4 space-y-4">
-      <div className="flex flex-col space-y-2">
-        <h3 className="font-medium text-sm">Date et heure du rendez-vous</h3>
-        <Calendar
-          mode="single"
-          selected={date}
-          onSelect={handleDateSelect}
-          className="border rounded-md"
-          locale={fr}
-          captionLayout="dropdown"
-          fromYear={new Date().getFullYear() - 1}
-          toYear={new Date().getFullYear() + 2}
-        />
-      </div>
-      
-      <div className="flex items-center space-x-4">
-        <div className="flex flex-col space-y-1 flex-1">
-          <Label htmlFor="hour">Heure</Label>
-          <select
-            id="hour"
-            className="h-10 border border-input bg-background rounded-md px-3"
-            onChange={(e) => handleTimeChange("hour", e.target.value)}
-            value={date?.getHours() ?? 14}
-          >
-            {hours.map((hour) => (
-              <option key={hour} value={hour}>
-                {hour.toString().padStart(2, '0')}h
-              </option>
-            ))}
-          </select>
-        </div>
-        
-        <div className="flex flex-col space-y-1 flex-1">
-          <Label htmlFor="minute">Minute</Label>
-          <select
-            id="minute"
-            className="h-10 border border-input bg-background rounded-md px-3"
-            onChange={(e) => handleTimeChange("minute", e.target.value)}
-            value={date?.getMinutes() ?? 0}
-          >
-            {[0, 15, 30, 45].map((minute) => (
-              <option key={minute} value={minute}>
-                {minute.toString().padStart(2, '0')}
-              </option>
-            ))}
-          </select>
-        </div>
-      </div>
-    </div>
-  );
+  // ... (contenu du composant supprimé) ...
 };
+*/
 
 // Ajout du composant personnalisé pour l'icône d'infini (∞)
 const InfinityIcon = (props: LucideProps) => (
@@ -496,13 +429,53 @@ export const Ribbon = React.forwardRef<HTMLDivElement, RibbonProps>((
   const [emailModalOpen, setEmailModalOpen] = useState(false);
   const [selectedMeetingType, setSelectedMeetingType] = useState<MeetingType>('D0');
   const [selectedGender, setSelectedGender] = useState<GenderType>('Monsieur');
-  const [selectedDate, setSelectedDate] = useState<Date | undefined>(
-    () => {
-      const date = new Date();
-      date.setHours(14, 0, 0, 0); // Par défaut à 14h
-      return date;
+
+  // États pour le popover de Rappel
+  const [isRappelPopoverOpen, setIsRappelPopoverOpen] = useState(false);
+  const [rappelDateInput, setRappelDateInput] = useState(''); // JJ/MM/AAAA
+  const [rappelTimeInput, setRappelTimeInput] = useState(''); // HH:MM
+
+  // Fonctions d'auto-formatage copiées/adaptées de EditableCell
+  const autoFormatDatePopover = (value: string): string => {
+    let cleanValue = value.replace(/[^\d]/g, '');
+    if (cleanValue.length > 8) cleanValue = cleanValue.substring(0, 8);
+    if (cleanValue.length >= 5) {
+      return `${cleanValue.substring(0, 2)}/${cleanValue.substring(2, 4)}/${cleanValue.substring(4)}`;
+    } else if (cleanValue.length >= 3) {
+      return `${cleanValue.substring(0, 2)}/${cleanValue.substring(2)}`;
     }
-  );
+    return cleanValue;
+  };
+
+  const autoFormatTimePopover = (value: string): string => {
+    let cleanValue = value.replace(/[^\d]/g, '');
+    if (cleanValue.length > 4) cleanValue = cleanValue.substring(0, 4);
+    if (cleanValue.length >= 3) {
+      return `${cleanValue.substring(0, 2)}:${cleanValue.substring(2)}`;
+    }
+    return cleanValue;
+  };
+
+  const handleRappelDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    // Gérer la suppression de / comme dans EditableCell
+    if (rappelDateInput.endsWith('/') && e.target.value.length < rappelDateInput.length) {
+      if ( (rappelDateInput.length === 3 && e.target.value.length ===2) || (rappelDateInput.length === 6 && e.target.value.length === 5 )){
+        setRappelDateInput(e.target.value.slice(0, -1)); 
+        return;
+      }
+    }
+    setRappelDateInput(autoFormatDatePopover(e.target.value));
+  };
+
+  const handleRappelTimeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (rappelTimeInput.endsWith(':') && e.target.value.length < rappelTimeInput.length) {
+      if (rappelTimeInput.length === 3 && e.target.value.length === 2){
+        setRappelTimeInput(e.target.value.slice(0, -1));
+        return;
+      }
+    }
+    setRappelTimeInput(autoFormatTimePopover(e.target.value));
+  };
 
   const initializeCal = async () => {
     try {
@@ -655,7 +628,59 @@ export const Ribbon = React.forwardRef<HTMLDivElement, RibbonProps>((
       return;
     }
 
-    const formattedDateTime = formatDateTimeForEmail(selectedDate);
+    let rdvDate: Date | undefined = undefined;
+
+    if (activeContact.dateRendezVous) {
+      const dateStr = activeContact.dateRendezVous;
+      const timeStr = activeContact.heureRendezVous;
+
+      const parsedDateFromDateStr = new Date(dateStr);
+
+      if (isValid(parsedDateFromDateStr)) {
+        const isInputDateOnlyFormat = /^\d{4}-\d{2}-\d{2}$/.test(dateStr);
+
+        if (isInputDateOnlyFormat && timeStr) {
+          try {
+            const [year, month, day] = dateStr.split('-').map(Number);
+            const [hours, minutes] = timeStr.split(':').map(Number);
+            if (!isNaN(year) && !isNaN(month) && !isNaN(day) && !isNaN(hours) && !isNaN(minutes)) {
+              const combinedDate = new Date(year, month - 1, day, hours, minutes);
+              if (isValid(combinedDate)) {
+                rdvDate = combinedDate;
+              } else {
+                 console.warn(`[Ribbon] La combinaison de la date '${dateStr}' et de l\'heure '${timeStr}' a produit une date invalide pour ${activeContact.id}`);
+              }
+            } else {
+              console.warn(`[Ribbon] Numéros invalides dans les parties date/heure de '${dateStr}', '${timeStr}' for ${activeContact.id}`);
+            }
+          } catch (e) {
+            console.error(`[Ribbon] Erreur en combinant la date '${dateStr}' et l\'heure '${timeStr}' pour ${activeContact.id}:`, e);
+          }
+        } else if (!isInputDateOnlyFormat) {
+          // dateStr était probablement une chaîne ISO complète, utilisez parsedDateFromDateStr directement
+          rdvDate = parsedDateFromDateStr;
+        } else {
+          // dateStr était YYYY-MM-DD et pas de timeStr, utilisez parsedDateFromDateStr (l'heure sera minuit UTC ou local)
+          // Pour être sûr, reconstruire en tant que minuit local si c'était YYYY-MM-DD
+           const [year, month, day] = dateStr.split('-').map(Number);
+           if(!isNaN(year) && !isNaN(month) && !isNaN(day)) {
+               rdvDate = new Date(year, month - 1, day); // Minuit local
+           } else {
+               console.warn(`[Ribbon] dateRendezVous '${dateStr}' (YYYY-MM-DD) avait des parties invalides et pas de heureRendezVous pour ${activeContact.id}`);
+           }
+        }
+      } else {
+        console.warn(`[Ribbon] dateRendezVous '${dateStr}' n\'est pas une chaîne de date valide pour ${activeContact.id}`);
+      }
+    } else if (activeContact.heureRendezVous) {
+      console.warn(`[Ribbon] Seul heureRendezVous ('${activeContact.heureRendezVous}') est présent sans dateRendezVous pour ${activeContact.id}`);
+    }
+
+    if (!rdvDate) {
+      console.warn(`[Ribbon] Impossible de déterminer une rdvDate valide pour le contact ${activeContact.id}. L\'email utilisera la valeur par défaut.`);
+    }
+
+    const formattedDateTime = formatDateTimeForEmail(rdvDate);
     const emailSubject = `Confirmation rendez-vous ${selectedMeetingType === 'D0' ? 'visio' : 'présentiel'} - Arcanis Conseil`;
     const emailBody = EMAIL_TEMPLATES[selectedMeetingType](
       activeContact.lastName, 
@@ -687,7 +712,38 @@ export const Ribbon = React.forwardRef<HTMLDivElement, RibbonProps>((
       return;
     }
     
-    // Ouvrir le modal au lieu d'ouvrir directement l'email
+    // // Pré-remplissage de la date et l'heure - SUPPRIMÉ
+    // let initialRdvDate: Date | undefined = new Date();
+    // initialRdvDate.setHours(14,0,0,0); // Heure par défaut
+
+    // if (activeContact.dateRendezVous) {
+    //   try {
+    //     const [year, month, day] = activeContact.dateRendezVous.split('-').map(Number);
+    //     if (year && month && day) {
+    //       initialRdvDate.setFullYear(year, month - 1, day); // month est 0-indexed
+    //     } else {
+    //       console.warn("Format dateRendezVous invalide:", activeContact.dateRendezVous);
+    //     }
+    //   } catch (e) {
+    //     console.warn("Erreur de parsing dateRendezVous:", activeContact.dateRendezVous, e);
+    //   }
+    // }
+    
+    // if (activeContact.heureRendezVous) {
+    //   try {
+    //     const [h, m] = activeContact.heureRendezVous.split(':').map(Number);
+    //     if (h !== undefined && m !== undefined && !isNaN(h) && !isNaN(m)) {
+    //        initialRdvDate.setHours(h, m, 0, 0);
+    //     } else {
+    //       console.warn("Format heureRendezVous invalide:", activeContact.heureRendezVous);
+    //     }
+    //   } catch (e) {
+    //     console.warn("Erreur de parsing heureRendezVous:", activeContact.heureRendezVous, e);
+    //   }
+    // }
+    // setSelectedDate(initialRdvDate); // Supprimé
+    
+    // Ouvrir le modal
     setEmailModalOpen(true);
     
     // Définir le genre par défaut en fonction du prénom (si disponible)
@@ -792,6 +848,46 @@ export const Ribbon = React.forwardRef<HTMLDivElement, RibbonProps>((
     </div>
   );
 
+  const handleRappelSave = () => {
+    if (!activeContact) return;
+
+    const dateParts = rappelDateInput.split('/');
+    const timeParts = rappelTimeInput.split(':');
+
+    if (dateParts.length !== 3 || timeParts.length !== 2) {
+      toast.error("Format date (JJ/MM/AAAA) ou heure (HH:MM) invalide pour le rappel.");
+      return;
+    }
+
+    const day = parseInt(dateParts[0], 10);
+    const month = parseInt(dateParts[1], 10) - 1; // Mois est 0-indexé
+    const year = parseInt(dateParts[2], 10);
+    const hours = parseInt(timeParts[0], 10);
+    const minutes = parseInt(timeParts[1], 10);
+
+    if (isNaN(day) || isNaN(month) || isNaN(year) || isNaN(hours) || isNaN(minutes)) {
+      toast.error("Date ou heure du rappel contient des valeurs non numériques.");
+      return;
+    }
+    
+    // Validation simple des plages (peut être affinée)
+    if (year < 2000 || year > 2100 || month < 0 || month > 11 || day < 1 || day > 31 || hours < 0 || hours > 23 || minutes < 0 || minutes > 59) {
+        toast.error("Valeurs de date ou d'heure du rappel hors limites.");
+        return;
+    }
+
+    const rappelDateTime = new Date(year, month, day, hours, minutes);
+
+    if (!isValid(rappelDateTime)) {
+      toast.error("La date et l'heure du rappel ne sont pas valides.");
+      return;
+    }
+
+    onRappelDateTimeSelected(rappelDateTime);
+    setIsRappelPopoverOpen(false);
+    toast.success(`Rappel programmé pour le ${format(rappelDateTime, 'dd/MM/yyyy HH:mm')}`);
+  };
+
   // Gérer les valeurs undefined sécurité
   const safeStatusCompletionPercentage = statusCompletionPercentage ?? 0;
 
@@ -845,9 +941,23 @@ export const Ribbon = React.forwardRef<HTMLDivElement, RibbonProps>((
           icon={PhoneOff} 
           onClick={performHangUpAction}
           disabled={!activeContact || !contactInCallId || contactInCallId !== activeContact?.id || isImportPending}
-          tooltipContent="Raccrocher l'appel en cours"
-          className="flex-1 sm:flex-initial"
-        />
+          tooltipContent="Raccrocher l'appel en cours (si vous raccrochez depuis le téléphone, cliquez aussi ici pour enregistrer la durée d'appel)"
+          className={cn(
+            "flex-1 sm:flex-initial",
+            contactInCallId && activeContact?.id === contactInCallId ? "animate-pulse bg-red-500 text-white hover:bg-red-600 border-red-300" : ""
+          )}
+          variant={contactInCallId && activeContact?.id === contactInCallId ? "destructive" : "ghost"}
+        >
+          {contactInCallId && activeContact?.id === contactInCallId && (
+            <div className="flex flex-col items-center justify-center h-full relative">
+              <div className="absolute -top-2 -right-2 h-3 w-3 rounded-full bg-red-500 animate-ping"></div>
+              <div className="absolute -top-2 -right-2 h-3 w-3 rounded-full bg-red-500"></div>
+              <PhoneOff className="h-5 w-5 mb-1" />
+              <span className="text-xs">Raccrocher</span>
+              <span className="text-xs text-red-200 mt-1">Appel en cours</span>
+            </div>
+          )}
+        </RibbonButton>
       </div>
 
         <RibbonSeparator />
@@ -863,32 +973,53 @@ export const Ribbon = React.forwardRef<HTMLDivElement, RibbonProps>((
           className="flex-1 sm:flex-initial"
         />
         
-        <TooltipProvider delayDuration={300}>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <DateTimePicker24h
-                onDateTimeSelected={onRappelDateTimeSelected}
-                initialDateTime={activeContact?.dateRappel && activeContact?.heureRappel 
-                  ? new Date(`${activeContact.dateRappel}T${activeContact.heureRappel}`) 
-                  : null
-                }
+        <Popover open={isRappelPopoverOpen} onOpenChange={setIsRappelPopoverOpen}>
+          <PopoverTrigger asChild>
+             <Button
+                variant="ghost"
+                className={cn(buttonVariants({ variant: 'ghost', size: 'lg' }), "flex-1 sm:flex-initial flex-col h-auto p-2 min-w-[70px] data-[state=open]:bg-accent data-[state=open]:text-accent-foreground")}
+                disabled={!activeContact || isImportPending}
+                type="button"
+                aria-label="Rappel"
+                onClick={() => {
+                  if (activeContact?.dateRappel && activeContact?.heureRappel) {
+                    try {
+                      const initialDate = parseISO(activeContact.dateRappel);
+                      setRappelDateInput(format(initialDate, 'dd/MM/yyyy'));
+                      // heureRappel est déjà HH:MM
+                      setRappelTimeInput(activeContact.heureRappel);
+                    } catch (e) {
+                      console.warn("Erreur parsing date/heure rappel existant:", e);
+                      const now = new Date();
+                      setRappelDateInput(format(now, 'dd/MM/yyyy'));
+                      setRappelTimeInput(format(now, 'HH:mm'));
+                    }
+                  } else {
+                    const now = new Date();
+                    setRappelDateInput(format(now, 'dd/MM/yyyy'));
+                    setRappelTimeInput(format(now, 'HH:mm'));
+                  }
+                  setIsRappelPopoverOpen(true);
+                }}
               >
-                <Button
-                  variant="ghost"
-                  className={cn(buttonVariants({ variant: 'ghost', size: 'lg' }), "flex-1 sm:flex-initial flex-col h-auto p-2 min-w-[70px] data-[state=open]:bg-accent data-[state=open]:text-accent-foreground")}
-                  disabled={!activeContact || isImportPending}
-                  type="button"
-                  aria-label="Rappel"
-                >
-                  {rappelButtonContent}
-                </Button>
-              </DateTimePicker24h>
-            </TooltipTrigger>
-            <TooltipContent>
-              <p>Planifier un rappel pour le contact sélectionné</p>
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
+                {rappelButtonContent}
+              </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-auto p-4 space-y-2" align="start">
+            <p className="text-sm font-medium">Définir un rappel</p>
+            <Input 
+              placeholder="JJ/MM/AAAA" 
+              value={rappelDateInput}
+              onChange={handleRappelDateChange}
+            />
+            <Input 
+              placeholder="HH:MM" 
+              value={rappelTimeInput}
+              onChange={handleRappelTimeChange}
+            />
+            <Button onClick={handleRappelSave} className="w-full">Enregistrer</Button>
+          </PopoverContent>
+        </Popover>
 
         <RibbonButton
           label="Rendez-vous"
@@ -1037,6 +1168,9 @@ export const Ribbon = React.forwardRef<HTMLDivElement, RibbonProps>((
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Création d&apos;email</DialogTitle>
+            <DialogDescription className="sr-only">
+              Configurez les détails de l&apos;email de confirmation de rendez-vous.
+            </DialogDescription>
           </DialogHeader>
           
           <div className="space-y-5 py-4">
@@ -1086,9 +1220,6 @@ export const Ribbon = React.forwardRef<HTMLDivElement, RibbonProps>((
                 </div>
               </RadioGroup>
             </div>
-            
-            {/* Sélecteur de date et heure */}
-            <SimpleDateTimePicker date={selectedDate} setDate={setSelectedDate} />
           </div>
           
           <DialogFooter>

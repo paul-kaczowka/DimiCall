@@ -11,7 +11,7 @@ import { toast } from 'react-toastify';
 import { importContactsAction, updateContactAction, clearAllDataAction, callAction, hangUpCallAction } from '@/app/actions';
 import { initialActionState, type ActionState } from '@/lib/actions-utils';
 import { 
-  Loader2, 
+  Loader2,  
   User, 
   Mail, 
   Phone, 
@@ -24,7 +24,8 @@ import {
   CalendarDays,
   Edit3,
   Clock,
-  PhoneOutgoing
+  PhoneOutgoing,
+  PhoneOff
 } from 'lucide-react';
 import { Separator } from "@/components/ui/separator";
 import {
@@ -49,6 +50,10 @@ import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover
 import { TimePickerOnly } from '@/components/ui/TimePickerOnly';
 import { fr } from 'date-fns/locale';
 import { AdbStatusBadge } from '@/components/ui/AdbStatusBadge';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { DndProvider } from 'react-dnd';
+import { HTML5Backend } from 'react-dnd-html5-backend';
+import { ThemeToggleButton } from "@/components/ui/ThemeToggleButton";
 
 // Au début du fichier, sous les imports, ajouter l'extension de Window
 declare global {
@@ -116,6 +121,8 @@ export default function ContactsPage() {
   const [isPanelOpen, setIsPanelOpen] = useState(false);
   const [contactInCallId, setContactInCallId] = useState<string | null>(null);
   const [isExportFormatDialogOpen, setIsExportFormatDialogOpen] = useState(false);
+  const [isPollingActive, setIsPollingActive] = useState(false);
+  const CALL_STATUS_POLLING_INTERVAL = 2000;
   
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedSearchColumn, setSelectedSearchColumn] = useState('firstName');
@@ -372,7 +379,7 @@ export default function ContactsPage() {
         toast.error(updateContactState.message || "Erreur lors de la mise à jour du contact.");
       }
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [updateContactState, isAutosaveActive]);
 
   useEffect(() => {
@@ -401,32 +408,39 @@ export default function ContactsPage() {
         toast.error(callState.message);
       }
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [callState, activeContact, isAutosaveActive]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [callState, isAutosaveActive, fetchAndSetContacts, activeContact]);
 
   useEffect(() => {
     if (hangUpState.message) {
       if (hangUpState.success && hangUpState.data) {
-        toast.success(hangUpState.message);
+        toast.success(hangUpState.message || "Appel terminé et durée enregistrée.");
         const updatedContact = hangUpState.data as ContactAppType;
-        setContacts(prevContacts => 
-          prevContacts.map(c => c.id === updatedContact.id ? updatedContact : c)
+        setContacts(prevContacts =>
+          prevContacts.map(contact =>
+            contact.id === updatedContact.id ? updatedContact : contact
+          )
         );
         if (activeContact && activeContact.id === updatedContact.id) {
           setActiveContactState(updatedContact);
         }
         setContactInCallId(null);
-        
-        // Déclencher l'autosauvegarde après raccrochage
+
+        // Déclencher l'autosauvegarde après avoir raccroché et mis à jour la durée
         if (isAutosaveActive) {
           triggerSave(undefined, false, false);
         }
-      } else {
-        toast.error(hangUpState.message || "Erreur lors du raccrochage de l'appel.");
+      } else if (hangUpState.success && !hangUpState.data) {
+        toast.info(hangUpState.message || "Appel terminé. Rafraîchissement des données...");
+        fetchAndSetContacts();
+        setContactInCallId(null);
+      } else if (!hangUpState.success) {
+        toast.error(hangUpState.message || "Erreur lors de la finalisation de l'appel.");
+        setContactInCallId(null);
       }
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hangUpState, activeContact, isAutosaveActive]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hangUpState, isAutosaveActive, fetchAndSetContacts, activeContact]);
 
   const handleRequestClearAllData = () => {
     setIsClearConfirmOpen(true);
@@ -455,14 +469,16 @@ export default function ContactsPage() {
 
   // Remplacer complètement la fonction mainFnKeyActionLogic par une implémentation plus robuste
   const handleFunctionKey = useCallback((event: KeyboardEvent) => {
-    // Prévenir le comportement par défaut du navigateur pour les touches de fonction
-    event.preventDefault();
-
-    // Vérifier si c'est une touche de fonction pertinente
     const relevantKeys = ['F2', 'F3', 'F4', 'F5', 'F6', 'F7', 'F8', 'F9', 'F10'];
+    
+    // Si la touche n'est pas une touche de fonction que nous gérons, ne rien faire.
+    // Cela permet aux événements normaux de saisie de fonctionner.
     if (!relevantKeys.includes(event.key)) {
       return;
     }
+
+    // Si c'est une touche de fonction que nous voulons gérer, alors on prévient le comportement par défaut.
+    event.preventDefault();
 
     // Vérifier si on a un contact actif
     if (!activeContact || !activeContact.id) {
@@ -472,30 +488,26 @@ export default function ContactsPage() {
 
     // Vérifier l'état actuel
     if (isUpdateContactPending) {
-      // Éviter les actions multiples simultanées
       console.log("[TouchesFn] Action en cours, veuillez patienter");
       return;
     }
 
-    // Éviter les actions multiples simultanées
     if (inActionSequence.current) {
       console.log("[TouchesFn] Séquence d'actions déjà en cours, veuillez patienter");
       return;
     }
 
-    // Trouver le statut correspondant à la touche
     const mapping = fnKeyMappings.find(m => m.keyName === event.key);
     if (!mapping) {
+      // Ne devrait pas arriver si relevantKeys.includes(event.key) est vrai, mais par sécurité.
       return;
     }
 
-    // Données du contact actuel
     const contactId = activeContact.id;
     const contactName = activeContact.firstName || 'Contact';
     const newStatus = mapping.statusName;
     const isInCall = contactInCallId === contactId;
 
-    // Mise à jour optimiste immédiate de l'interface
     setContacts(prevContacts => 
       prevContacts.map(contact => 
         contact.id === contactId 
@@ -504,15 +516,12 @@ export default function ContactsPage() {
       )
     );
 
-    // Une seule notification claire pour l'utilisateur
     toast.success(`Statut "${newStatus}" appliqué à ${contactName}`);
 
-    // Séquence d'actions regroupée dans une seule transition pour éviter les rendus intermédiaires
     startTransition(() => {
       try {
         inActionSequence.current = true;
 
-        // Étape 1: Raccrocher si nécessaire
         if (isInCall) {
           console.log(`[TouchesFn] Raccrochage de l'appel en cours (ID: ${contactId})`);
           const hangUpFormData = new FormData();
@@ -520,14 +529,12 @@ export default function ContactsPage() {
           hangUpFormAction(hangUpFormData);
         }
 
-        // Étape 2: Mise à jour du statut auprès du serveur
         console.log(`[TouchesFn] Mise à jour du statut: ${newStatus} (ID: ${contactId})`);
         const statusFormData = new FormData();
         statusFormData.append('contactId', contactId);
         statusFormData.append('status', newStatus);
         updateContactFormAction(statusFormData);
 
-        // Étape 3: Trouver et sélectionner le contact suivant
         const currentIndex = filteredContacts.findIndex(c => c.id === contactId);
         const hasNextContact = currentIndex !== -1 && currentIndex < filteredContacts.length - 1;
         
@@ -535,11 +542,7 @@ export default function ContactsPage() {
           const nextContact = filteredContacts[currentIndex + 1];
           if (nextContact && nextContact.id) {
             console.log(`[TouchesFn] Passage au contact suivant: ${nextContact.firstName || 'Contact'} (ID: ${nextContact.id})`);
-            
-            // Mise à jour synchrone du contact actif
             setActiveContact(nextContact);
-            
-            // Étape 4: Appeler le contact suivant
             if (nextContact.phoneNumber) {
               console.log(`[TouchesFn] Appel du contact suivant (ID: ${nextContact.id}, Tél: ${nextContact.phoneNumber})`);
               const callFormData = new FormData();
@@ -550,18 +553,16 @@ export default function ContactsPage() {
           }
         }
 
-        // Au lieu de fetchAndSetContacts après la séquence, on le programme
-        // pour qu'il soit exécuté après que les autres actions aient eu le temps de finir
         setTimeout(() => {
           startTransition(() => {
             fetchAndSetContacts();
-            inActionSequence.current = false; // On relâche le verrou après le rafraîchissement
+            inActionSequence.current = false;
           });
-        }, 500); // Un délai raisonnable pour permettre aux autres actions de se terminer
+        }, 500);
       } catch (error) {
         console.error("[TouchesFn] Erreur pendant la séquence d'actions:", error);
         toast.error("Une erreur est survenue pendant la mise à jour");
-        inActionSequence.current = false; // Assurez-vous de libérer le verrou même en cas d'erreur
+        inActionSequence.current = false;
       }
     });
   }, [
@@ -756,33 +757,45 @@ export default function ContactsPage() {
   };
 
   const handleDragOver = (event: React.DragEvent<HTMLDivElement>) => {
-    event.preventDefault();
-    setIsDragOver(true);
+    // Seulement preventDefault si des fichiers sont glissés pour permettre le drop de fichiers
+    if (event.dataTransfer.types.includes('Files')) {
+      event.preventDefault();
+      setIsDragOver(true);
+    } else {
+      // Si ce ne sont pas des fichiers, ne pas interférer et ne pas afficher l'indicateur de drop
+      setIsDragOver(false);
+    }
   };
 
   const handleDragEnter = (event: React.DragEvent<HTMLDivElement>) => {
-    event.preventDefault();
-    setIsDragOver(true);
+    // Seulement preventDefault et afficher l'indicateur si des fichiers sont glissés
+    if (event.dataTransfer.types.includes('Files')) {
+      event.preventDefault();
+      setIsDragOver(true);
+    }
   };
 
   const handleDragLeave = (event: React.DragEvent<HTMLDivElement>) => {
     if (event.currentTarget.contains(event.relatedTarget as Node)) {
       return;
     }
+    // Si on quitte la zone, toujours enlever l'indicateur de drop
     setIsDragOver(false);
   };
 
   const handleDrop = (event: React.DragEvent<HTMLDivElement>) => {
-    event.preventDefault();
-    setIsDragOver(false);
-    if (inputFileRef.current) inputFileRef.current.value = "";
-
-    if (event.dataTransfer.files && event.dataTransfer.files.length > 0) {
+    // Uniquement si des fichiers sont déposés
+    if (event.dataTransfer.types.includes('Files') && event.dataTransfer.files && event.dataTransfer.files.length > 0) {
+      event.preventDefault(); // Important de le mettre ici, conditionnellement
+      setIsDragOver(false);
+      if (inputFileRef.current) inputFileRef.current.value = "";
       const file = event.dataTransfer.files[0];
       processFileForImport(file);
       event.dataTransfer.clearData();
     } else {
-      toast.warn("Aucun fichier n'a été déposé ou le type n'est pas correct.");
+      // Si ce n'est pas un drop de fichier, on réinitialise au cas où et on ne fait rien d'autre
+      setIsDragOver(false);
+      console.log("[ContactsPage] Drop event not involving files, likely an internal DND operation or empty drop.");
     }
   };
 
@@ -802,8 +815,8 @@ export default function ContactsPage() {
     const formData = new FormData();
     formData.append('contactId', contactId as string);
     Object.entries(dataToUpdate).forEach(([key, value]) => {
-      if (value !== undefined && value !== null) {
-        formData.append(key, String(value));
+      if (value !== undefined) {
+        formData.append(key, value === null ? '' : String(value));
       }
     });
 
@@ -817,6 +830,103 @@ export default function ContactsPage() {
     }
     return null;
   }, [contacts, safeUpdateContactAction]);
+
+  // Ajouter cette fonction pour vérifier l'état de l'appel périodiquement
+  const checkCallStatus = useCallback(async () => {
+    if (!contactInCallId) {
+      setIsPollingActive(false);
+      return;
+    }
+
+    try {
+      const response = await fetch('/api/call/status');
+      const data = await response.json();
+      
+      console.log(`[CallStatusPolling] Statut d'appel vérifié: ${JSON.stringify(data)}`);
+      
+      // Si un appel était en cours (contactInCallId existe) mais n'est plus actif selon l'API
+      if (contactInCallId && !data.call_in_progress) {
+        console.log(`[CallStatusPolling] Appel terminé détecté pour le contact ID: ${contactInCallId}`);
+        
+        try {
+          // Appeler directement l'API hangup pour calculer la durée d'appel
+          const hangupResponse = await fetch('/api/hangup', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ contact_id: contactInCallId })
+          });
+          
+          if (!hangupResponse.ok) {
+            console.error(`[CallStatusPolling] Erreur lors de l'appel à /api/hangup: ${hangupResponse.status}`);
+            // Fallback: on utilise la méthode traditionnelle avec le formulaire
+            const formData = new FormData();
+            formData.append('contactId', contactInCallId);
+            hangUpFormAction(formData);
+          } else {
+            console.log(`[CallStatusPolling] Appel à /api/hangup réussi, l'appel est maintenant terminé`);
+            
+            // Récupérer les nouvelles données du contact pour rafraîchir l'interface
+            const contactResponse = await fetch(`/api/contacts/${contactInCallId}`);
+            if (contactResponse.ok) {
+              const updatedContact = await contactResponse.json();
+              // Mettre à jour le contact dans la liste
+              setContacts(prev => prev.map(c => c.id === contactInCallId ? updatedContact : c));
+              // Mettre à jour le contact actif si c'est celui qui était en appel
+              if (activeContact && activeContact.id === contactInCallId) {
+                setActiveContactState(updatedContact);
+              }
+              // Afficher un message de succès
+              toast.success(`Appel terminé. Durée: ${updatedContact.dureeAppel || 'non disponible'}`);
+            }
+            
+            // Réinitialiser l'ID du contact en appel
+            setContactInCallId(null);
+          }
+        } catch (error) {
+          console.error(`[CallStatusPolling] Exception lors de l'appel à /api/hangup:`, error);
+          // Fallback vers la méthode traditionnelle
+          const formData = new FormData();
+          formData.append('contactId', contactInCallId);
+          hangUpFormAction(formData);
+        }
+        
+        // Arrêter le polling puisque l'appel est terminé
+        setIsPollingActive(false);
+      }
+    } catch (error) {
+      console.error(`[CallStatusPolling] Erreur lors de la vérification du statut d'appel:`, error);
+    }
+  }, [contactInCallId, hangUpFormAction, activeContact, setContacts, setActiveContactState]);
+  
+  // Effet pour démarrer/arrêter le polling quand contactInCallId change
+  useEffect(() => {
+    let intervalId: NodeJS.Timeout | null = null;
+    
+    if (contactInCallId && !isPollingActive) {
+      console.log(`[CallStatusPolling] Démarrage du polling pour le contact ID: ${contactInCallId}`);
+      setIsPollingActive(true);
+      
+      // Attendre 3 secondes avant de commencer le polling pour laisser l'appel s'établir
+      const timeoutId = setTimeout(() => {
+        intervalId = setInterval(checkCallStatus, CALL_STATUS_POLLING_INTERVAL);
+        // Exécuter une première vérification immédiatement
+        checkCallStatus();
+      }, 3000);
+      
+      return () => {
+        clearTimeout(timeoutId);
+        if (intervalId) clearInterval(intervalId);
+      };
+    } else if (!contactInCallId && isPollingActive) {
+      setIsPollingActive(false);
+    }
+    
+    return () => {
+      if (intervalId) clearInterval(intervalId);
+    };
+  }, [contactInCallId, isPollingActive, checkCallStatus]);
 
   if (isLoading && contacts.length === 0 && !importState.success) {
     let message = "Chargement des contacts...";
@@ -872,6 +982,7 @@ export default function ContactsPage() {
               statusCompletionPercentage={statusCompletionPercentage}
             />
           </div>
+          <ThemeToggleButton />
           <Button 
             variant="outline" 
             size="icon" 
@@ -911,17 +1022,19 @@ export default function ContactsPage() {
                   <Loader2 className="h-12 w-12 animate-spin text-primary" />
                 </div>
               ) : (
-          <ContactTable
-            data={filteredContacts}
-            onEditContact={handleEditContactInline}
-            onActiveContactChange={setActiveContact}
-            scrollContainerRef={tableViewportRef}
-                  isProcessingId={
-                    isUpdateContactPending && activeContact && (!updateContactState.data || updateContactState.data.id !== activeContact.id) ? activeContact.id : null
-                  }
-                  error={updateContactState.success === false ? updateContactState.message : null}
-                />
-          )}
+                <DndProvider backend={HTML5Backend}>
+                  <ContactTable
+                    data={filteredContacts}
+                    onEditContact={handleEditContactInline}
+                    onActiveContactChange={setActiveContact}
+                    scrollContainerRef={tableViewportRef}
+                    isProcessingId={
+                      isUpdateContactPending && activeContact && (!updateContactState.data || updateContactState.data.id !== activeContact.id) ? activeContact.id : null
+                    }
+                    error={updateContactState.success === false ? updateContactState.message : null}
+                  />
+                </DndProvider>
+              )}
         </div>
           </div>
           
@@ -1554,6 +1667,37 @@ export default function ContactsPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      )}
+
+      {/* Bouton flottant pour raccrocher */}
+      {contactInCallId && (
+        <div className="fixed bottom-8 right-8 z-50">
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button 
+                  variant="destructive" 
+                  size="lg" 
+                  className="rounded-full h-16 w-16 shadow-lg flex items-center justify-center animate-pulse"
+                  onClick={() => {
+                    if (activeContact && activeContact.id === contactInCallId) {
+                      const formData = new FormData();
+                      formData.append('contactId', contactInCallId);
+                      startTransition(() => {
+                        hangUpFormAction(formData);
+                      });
+                    }
+                  }}
+                >
+                  <PhoneOff className="h-8 w-8" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Raccrocher l&apos;appel en cours</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        </div>
       )}
     </div>
   );
