@@ -49,7 +49,7 @@ import {
 } from 'lucide-react';
 import { cn, formatPhoneNumber } from '@/lib/utils';
 import { DraggableTableHead } from "@/components/ui/DraggableTableHead"; // Ajouté
-import UploadDropZone from './UploadDropZone'; // Nouvel import
+import UploadDropZone from './UploadDropZone'; // Corrigé l'import
 
 // Définir les props pour ContactTable
 interface ContactTableProps {
@@ -314,7 +314,7 @@ export const ContactTable = React.memo(function ContactTableComponent({
       accessorKey: 'dureeAppel',
       header: () => <IconHeader icon={Hourglass} text="Durée Appel" />,
       cell: (info) => <DureeAppelCell contactId={info.row.original.id} value={info.getValue()} />,
-      size: 80,
+      size: 120,
     },
     {
       id: 'source', // Assurez-vous que chaque colonne a un ID unique

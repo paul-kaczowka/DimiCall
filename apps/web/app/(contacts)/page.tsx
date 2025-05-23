@@ -73,6 +73,7 @@ const fnKeyMappings: StatusMapping[] = [
 interface ContactAppType extends ContactSchemaType {
   bookingDate?: string | null;
   bookingTime?: string | null;
+  dureeAppel?: string | null;
   // bookingId?: string | null; // SUPPRIMÉ
   // bookingTitle?: string | null; // SUPPRIMÉ
   // bookingDuration?: number | null; // SUPPRIMÉ
@@ -647,6 +648,7 @@ export default function ContactsPage() {
       Commentaire: c.comment,
       "Date d'appel": c.dateAppel,
       "Heure d'appel": c.heureAppel,
+      "Durée d'appel": c.dureeAppel,
       "Date de rappel": c.dateRappel,
       "Heure de rappel": c.heureRappel,
       "Date de rendez-vous": c.dateRendezVous,
@@ -682,6 +684,7 @@ export default function ContactsPage() {
       Commentaire: c.comment,
       "Date d'appel": c.dateAppel,
       "Heure d'appel": c.heureAppel,
+      "Durée d'appel": c.dureeAppel,
       "Date de rappel": c.dateRappel,
       "Heure de rappel": c.heureRappel,
       "Date de rendez-vous": c.dateRendezVous,
@@ -1009,8 +1012,8 @@ export default function ContactsPage() {
 
   if (isLoading && contacts.length === 0 && !importMutation.isError) {
     let message = "Chargement des contacts...";
-    if (importMutation.error) {
-      const errorMessage = importMutation.error instanceof Error ? importMutation.error.message : "Erreur inconnue lors de l'importation.";
+    if (importMutation.isError && importMutation.failureReason) {
+      const errorMessage = importMutation.failureReason instanceof Error ? importMutation.failureReason.message : "Erreur inconnue lors de l'importation.";
       message = errorMessage;
     }
     return (
@@ -1112,11 +1115,11 @@ export default function ContactsPage() {
                       scrollContainerRef={tableViewportRef}
                       contactInCallId={ 
                         updateContactMutation.isPending && activeContact && 
-                        (!updateContactMutation.data || (updateContactMutation.data as ContactAppType).id !== activeContact.id) 
+                        (!updateContactMutation.isSuccess || (updateContactMutation.data as ContactAppType).id !== activeContact.id) 
                         ? activeContact.id 
                         : null
                       }
-                      error={updateContactMutation.isError && updateContactMutation.error ? (updateContactMutation.error instanceof Error ? updateContactMutation.error.message : "Erreur de mise à jour inconnue") : null}
+                      error={updateContactMutation.isError && updateContactMutation.failureReason ? (updateContactMutation.failureReason instanceof Error ? updateContactMutation.failureReason.message : "Erreur de mise à jour inconnue") : null}
                       columns={tableColumns}
                       visibleColumns={visibleColumns}
                       setVisibleColumns={setVisibleColumns}
