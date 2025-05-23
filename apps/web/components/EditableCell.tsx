@@ -135,6 +135,12 @@ export const EditableCell: React.FC<EditableCellProps> = React.memo(({
   }, [initialValue, isEditingText, cellType]);
 
   const handleSave = (valueToSave: string | null) => {
+    // Si la cellule n'est plus en mode édition (par exemple, à cause d'un re-rendu parent),
+    // ne pas procéder à la sauvegarde pour éviter des appels non intentionnels.
+    if (!isEditingText) {
+      return;
+    }
+
     let finalValue: string | null = valueToSave;
 
     if (cellType === 'date' && valueToSave) {

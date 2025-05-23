@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useState, useRef, startTransition, useMemo } from 'react';
-import { useActionState } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format, parseISO, isValid } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { Ribbon } from '@/components/Ribbon';
@@ -10,7 +10,6 @@ import { TableSearchBar, type SearchableColumn } from '@/components/ui/TableSear
 import { useAutosaveFile } from '@/hooks/useAutosaveFile';
 import { toast } from 'react-toastify';
 import { importContactsAction, updateContactAction, clearAllDataAction, callAction, hangUpCallAction } from '@/app/actions';
-import { initialActionState, type ActionState } from '@/lib/actions-utils';
 import {
   Loader2,
   User,
@@ -79,6 +78,69 @@ interface ContactAppType extends ContactSchemaType {
   // bookingDuration?: number | null; // SUPPRIMÉ
 }
 
+// Fonctions d'appel API pour TanStack Query
+// Ces fonctions doivent retourner les promesses directement
+const getContactsAPI = async (): Promise<ContactAppType[]> => {
+  const response = await fetch('http://localhost:8000/contacts');
+  if (!response.ok) {
+    throw new Error(`Erreur HTTP: ${response.status} ${response.statusText}`);
+  }
+  return response.json();
+};
+
+const updateContactAPI = async (formData: FormData): Promise<ContactAppType> => {
+  // Simuler le comportement de updateContactAction pour l'instant
+  // Dans une vraie application, cela appellerait directement votre API
+  // et retournerait le contact mis à jour.
+  // La action originale utilisait `updateContactAction` qui est une server action.
+  // Pour l'utiliser avec useMutation, elle devrait être appelée directement.
+  // Ici, on simule la structure de retour attendue.
+  const result = await updateContactAction({ success: false, message: '', data: null }, formData);
+  if (!result.success || !result.data) {
+    throw new Error(result.message || "Erreur lors de la mise à jour du contact.");
+  }
+  return result.data as ContactAppType;
+};
+
+const importContactsAPI = async (formData: FormData): Promise<{ count?: number; message?: string }> => {
+  const result = await importContactsAction({ success: false, message: '', data: null }, formData);
+   if (!result.success) {
+    throw new Error(result.message || "Erreur lors de l'importation des contacts.");
+  }
+  return result.data || { message: result.message };
+};
+
+const clearAllDataAPI = async (): Promise<{ message?: string }> => {
+  const result = await clearAllDataAction();
+  if (!result.success) {
+    throw new Error(result.message || "Erreur lors de la suppression des données.");
+  }
+  return { message: result.message };
+};
+
+const callAPI = async (formData: FormData): Promise<ContactAppType> => {
+  const result = await callAction({ success: false, message: '', data: null }, formData);
+  if (!result.success || !result.data) {
+    throw new Error(result.message || "Erreur lors de l'appel.");
+  }
+  return result.data as ContactAppType;
+};
+
+const hangUpCallAPI = async (formData: FormData): Promise<ContactAppType> => {
+  const result = await hangUpCallAction({ success: false, message: '', data: null }, formData);
+  if (!result.success) {
+    throw new Error(result.message || "Erreur lors du raccrochage.");
+  }
+  if (result.data) {
+    return result.data;
+  }
+  const contactId = formData.get('contactId');
+  if (typeof contactId === 'string') {
+      return { id: contactId } as ContactAppType; 
+  }
+  throw new Error("Appel raccroché avec succès, mais ni données de contact ni ID disponibles pour la mise à jour.");
+};
+
 // Fonction utilitaire pour vérifier et formater des dates de manière sécurisée
 const safeFormat = (date: Date | string | null | undefined, formatStr: string, options = {}) => {
   if (!date) return null;
@@ -106,10 +168,21 @@ export default function ContactsPage() {
     initAnimationStyles();
   }, []);
 
-  const [contacts, setContacts] = useState<ContactAppType[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  // isDragOver n'est plus utilisé au niveau de la page car DropZone gère son propre état de glissement
-  // const [isDragOver, setIsDragOver] = useState(false);
+  // Client TanStack Query
+  const queryClient = useQueryClient();
+
+  // Remplacer useState pour contacts et isLoading par useQuery
+  const { data: contacts = [], isLoading, error: contactsError } = useQuery<ContactAppType[], Error>({
+    queryKey: ['contacts'],
+    queryFn: getContactsAPI,
+  });
+
+  useEffect(() => {
+    if (contactsError) {
+      toast.error(`Impossible de charger les contacts: ${contactsError.message}`);
+    }
+  }, [contactsError]);
+
   const [activeContact, setActiveContactState] = useState<ContactAppType | null>(null);
   const [contactInCallId, setContactInCallId] = useState<string | null>(null);
   const [isExportFormatDialogOpen, setIsExportFormatDialogOpen] = useState(false);
@@ -160,91 +233,145 @@ export default function ContactsPage() {
     return Math.round((contactsWithStatus.length / contacts.length) * 100);
   }, [contacts]);
 
-  const [importState, importFormAction, isImportPending] = useActionState(
-    importContactsAction,
-    initialActionState as ActionState<{ count?: number; message?: string } | null>
-  );
-  const [updateContactState, updateContactFormAction, isUpdateContactPending] = useActionState(
-    updateContactAction,
-    initialActionState as ActionState<ContactAppType | null>
-  );
-  const [callState, callFormAction /*, isCallPending */] = useActionState(
-    callAction,
-    initialActionState as ActionState<ContactAppType | null>
-  );
-  const [hangUpState, hangUpFormAction /*, isHangUpPending */] = useActionState(
-    hangUpCallAction,
-    initialActionState as ActionState<ContactAppType | null>
-  );
-  // L'état pour clearAllDataAction n'est plus géré par useActionState ici
-  // car nous appelons clearAllDataAction directement et attendons son résultat.
+  // Remplacer useActionState par useMutation pour chaque action
+  const importMutation = useMutation<
+    { count?: number; message?: string },
+    Error,
+    FormData,
+    unknown
+  >({
+    mutationKey: ['contacts', 'import'],
+    mutationFn: importContactsAPI,
+    onSuccess: (data) => {
+        toast.success(data.message || "Contacts importés avec succès !");
+        if (inputFileRef.current) inputFileRef.current.value = "";
+        queryClient.invalidateQueries({ queryKey: ['contacts'] });
+    },
+    onError: (error: Error) => {
+        toast.error(`Erreur d'importation: ${error.message}`);
+    },
+  });
 
-  // Fonctions wrappers sécurisées pour les appels d'action
-  const safeImportAction = useCallback((formData: FormData) => {
-    startTransition(() => {
-      importFormAction(formData);
-    });
-  }, [importFormAction]);
+  const updateContactMutation = useMutation<
+    ContactAppType,
+    Error,
+    FormData,
+    unknown
+  >({
+    mutationKey: ['contacts', 'update'],
+    mutationFn: updateContactAPI,
+    onSuccess: (updatedContact) => {
+      toast.success("Contact mis à jour avec succès !");
+      queryClient.invalidateQueries({ queryKey: ['contacts'] });
+      // Mettre à jour activeContact si c'est celui qui a été modifié
+      if (activeContact && activeContact.id === updatedContact.id) {
+        setActiveContactState(updatedContact);
+      }
+      if (isAutosaveActive) {
+        triggerSave(undefined, false, false); // Garder l'autosave si pertinent
+      }
+    },
+    onError: (error: Error) => {
+      toast.error(`Erreur de mise à jour: ${error.message}`);
+    },
+  });
 
+  const callMutation = useMutation<
+    ContactAppType,
+    Error,
+    FormData,
+    unknown
+  >({
+    mutationKey: ['contacts', 'call'],
+    mutationFn: callAPI,
+    onSuccess: (updatedContact) => {
+      toast.success("Appel démarré.");
+      queryClient.invalidateQueries({ queryKey: ['contacts'] });
+      if (activeContact && activeContact.id === updatedContact.id) {
+        setActiveContactState(updatedContact);
+        setContactInCallId(updatedContact.id);
+      }
+      if (isAutosaveActive) {
+        triggerSave(undefined, false, false);
+      }
+    },
+    onError: (error: Error) => {
+      toast.error(`Erreur d'appel: ${error.message}`);
+    },
+  });
+
+  const hangUpMutation = useMutation<
+    ContactAppType,
+    Error,
+    FormData,
+    unknown
+  >({
+    mutationKey: ['contacts', 'hangup'],
+    mutationFn: hangUpCallAPI,
+    onSuccess: (updatedContact) => {
+      toast.success("Appel terminé et durée enregistrée.");
+      queryClient.invalidateQueries({ queryKey: ['contacts'] });
+      
+      if (updatedContact && updatedContact.status !== undefined) {
+         if (activeContact && activeContact.id === updatedContact.id) {
+            setActiveContactState(updatedContact);
+         }
+      }
+      
+      setContactInCallId(null);
+      if (isAutosaveActive) {
+        triggerSave(undefined, false, false);
+      }
+    },
+    onError: (error: Error) => {
+      toast.error(`Erreur pour raccrocher: ${error.message}`);
+      setContactInCallId(null);
+    },
+  });
+  
+  const clearAllDataMutation = useMutation<
+    { message?: string },
+    Error,
+    void,
+    unknown
+  >({
+    mutationKey: ['contacts', 'clearAll'],
+    mutationFn: clearAllDataAPI,
+    onSuccess: (data) => {
+      toast.success(data.message || "Toutes les données ont été effacées.");
+      queryClient.invalidateQueries({ queryKey: ['contacts'] });
+      setActiveContact(null);
+      if (autosaveFileHandle) {
+        resetFileHandle(); // Garder la logique d'autosave si nécessaire
+        toast.info("La session d'autosave a été réinitialisée.");
+      }
+    },
+    onError: (error: Error) => {
+      toast.error(`Erreur de suppression: ${error.message}`);
+    },
+  });
+
+  // Fonctions wrappers sécurisées pour les appels d'action -> Remplacées par .mutate()
   const safeUpdateContactAction = useCallback((formData: FormData) => {
-    startTransition(() => {
-      updateContactFormAction(formData);
-    });
-  }, [updateContactFormAction]);
+    updateContactMutation.mutate(formData);
+  }, [updateContactMutation]);
 
   const safeCallAction = useCallback((formData: FormData) => {
-    startTransition(() => {
-      callFormAction(formData);
-    });
-  }, [callFormAction]);
+    callMutation.mutate(formData);
+  }, [callMutation]);
 
   const safeHangUpAction = useCallback((formData: FormData) => {
-    startTransition(() => {
-      hangUpFormAction(formData);
-    });
-  }, [hangUpFormAction]);
+    hangUpMutation.mutate(formData);
+  }, [hangUpMutation]);
 
   const inputFileRef = useRef<HTMLInputElement>(null);
   const ribbonRef = useRef<HTMLDivElement>(null);
   const tableViewportRef = useRef<HTMLDivElement>(null);
   const mainPageRef = useRef<HTMLDivElement>(null);
 
-  const setActiveContact = (contact: ContactAppType | null) => {
+  const setActiveContact = useCallback((contact: ContactAppType | null) => {
     setActiveContactState(contact);
-  };
-
-  const fetchAndSetContacts = useCallback(async () => {
-    setIsLoading(true);
-    try {
-      const response = await fetch('http://localhost:8000/contacts');
-      if (!response.ok) {
-        throw new Error(`Erreur HTTP: ${response.status} ${response.statusText}`);
-      }
-      const data: ContactAppType[] = await response.json();
-      setContacts(data);
-    } catch (error) {
-      console.error("[ContactsPage] Erreur lors de la récupération des contacts:", error);
-      toast.error("Impossible de charger les contacts depuis le serveur.");
-      setContacts([]);
-    }
-    setIsLoading(false);
   }, []);
-
-  useEffect(() => {
-    fetchAndSetContacts();
-  }, [fetchAndSetContacts]);
-
-  useEffect(() => {
-    if (importState.message) {
-      if (importState.success) {
-        toast.success(importState.message);
-        if (inputFileRef.current) inputFileRef.current.value = "";
-        fetchAndSetContacts();
-      } else {
-        toast.error(importState.message);
-      }
-    }
-  }, [importState, fetchAndSetContacts]);
 
   const getContactsForAutosave = useCallback(async () => {
     return contacts;
@@ -345,119 +472,14 @@ export default function ContactsPage() {
     setWasSaving(isAutosaveSaving);
   }, [isAutosaveSaving, wasSaving, autosaveHookError, autosaveFileHandle]);
 
-  // Déplacer les effets qui utilisent isAutosaveActive ici, après sa déclaration
-  useEffect(() => {
-    if (updateContactState.message) {
-      if (updateContactState.success && updateContactState.data) { // Condition stricte maintenue
-        toast.success(updateContactState.message);
-        
-        const updatedContact = updateContactState.data as ContactAppType;
-        setContacts(prevContacts =>
-          prevContacts.map(c => c.id === updatedContact.id ? updatedContact : c)
-        );
-        if (activeContact && activeContact.id === updatedContact.id) {
-          setActiveContactState(updatedContact);
-        }
-        
-        // Rétablir fetchAndSetContacts() UNIQUEMENT après une sauvegarde réussie avec des données retournées
-        fetchAndSetContacts(); 
-        
-        // Déclencher l'autosauvegarde après mise à jour
-        if (isAutosaveActive) {
-          triggerSave(undefined, false, false);
-        }
-      } else if (!updateContactState.success) { // Gérer explicitement les erreurs
-        toast.error(updateContactState.message || "Erreur lors de la mise à jour du contact.");
-      }
-      // Si success est true mais data est null, cela peut être un cas où aucune donnée n'a été modifiée.
-      // Dans ce cas, on ne rafraîchit pas forcément depuis le serveur pour éviter le clignotement.
-    }
-  }, [updateContactState, isAutosaveActive, fetchAndSetContacts, activeContact]); // Rétablir fetchAndSetContacts dans les dépendances
-
-  useEffect(() => {
-    if (callState.message) {
-      if (callState.success && callState.data) {
-        toast.success(callState.message);
-        const updatedContact = callState.data as ContactAppType;
-
-        setContacts(prevContacts =>
-          prevContacts.map(contact =>
-            contact.id === updatedContact.id ? updatedContact : contact
-          )
-        );
-        if (activeContact && activeContact.id === updatedContact.id) {
-          setActiveContactState(updatedContact);
-          setContactInCallId(updatedContact.id);
-        }
-
-        // Déclencher l'autosauvegarde après appel
-        if (isAutosaveActive) {
-          triggerSave(undefined, false, false);
-        }
-      } else if (callState.success && !callState.data) {
-        toast.success(callState.message + " (Données de contact non reçues pour mise à jour locale)." );
-      } else {
-        toast.error(callState.message);
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [callState, isAutosaveActive, fetchAndSetContacts, activeContact]);
-
-  useEffect(() => {
-    if (hangUpState.message) {
-      if (hangUpState.success && hangUpState.data) {
-        toast.success(hangUpState.message || "Appel terminé et durée enregistrée." );
-        const updatedContact = hangUpState.data as ContactAppType;
-        setContacts(prevContacts =>
-          prevContacts.map(contact =>
-            contact.id === updatedContact.id ? updatedContact : contact
-          )
-        );
-        if (activeContact && activeContact.id === updatedContact.id) {
-          setActiveContactState(updatedContact);
-        }
-        setContactInCallId(null);
-
-        // Déclencher l'autosauvegarde après avoir raccroché et mis à jour la durée
-        if (isAutosaveActive) {
-          triggerSave(undefined, false, false);
-        }
-      } else if (hangUpState.success && !hangUpState.data) {
-        toast.info(hangUpState.message || "Appel terminé. Rafraîchissement des données...");
-        fetchAndSetContacts();
-        setContactInCallId(null);
-      } else if (!hangUpState.success) {
-        toast.error(hangUpState.message || "Erreur lors de la finalisation de l'appel.");
-        setContactInCallId(null);
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hangUpState, isAutosaveActive, fetchAndSetContacts, activeContact]);
-
   const handleRequestClearAllData = () => {
     setIsClearConfirmOpen(true);
   };
 
   const confirmClearAllData = useCallback(() => {
     setIsClearConfirmOpen(false);
-    startTransition(async () => {
-      const result = await clearAllDataAction();
-      if (result.success) {
-        toast.success(result.message || "Toutes les données ont été effacées." );
-        fetchAndSetContacts();
-        setActiveContact(null);
-        if (autosaveFileHandle) {
-          resetFileHandle();
-          toast.info("La session d'autosave a été réinitialisée." );
-        }
-      } else {
-        toast.error(result.message || "Erreur lors de la suppression des données." );
-      }
-    });
-  }, [
-    // Suppression de la dépendance inutile
-    // clearAllDataAction
-  ]);
+    clearAllDataMutation.mutate();
+  }, [clearAllDataMutation]);
 
   // Référence pour suivre les séquences d'actions en cours
   const inActionSequence = React.useRef(false);
@@ -482,7 +504,7 @@ export default function ContactsPage() {
     }
 
     // Vérifier l'état actuel
-    if (isUpdateContactPending) {
+    if (updateContactMutation.isPending || callMutation.isPending || hangUpMutation.isPending) {
       console.log("[TouchesFn] Action en cours, veuillez patienter");
       return;
     }
@@ -503,17 +525,9 @@ export default function ContactsPage() {
     const newStatus = mapping.statusName;
     const isInCall = contactInCallId === contactId;
 
-    setContacts(prevContacts =>
-      prevContacts.map(contact =>
-        contact.id === contactId
-          ? {...contact, status: newStatus}
-          : contact
-      )
-    );
-
     toast.success(`Statut "${newStatus}" appliqué à ${contactName}` );
 
-    startTransition(() => {
+    startTransition(async () => {
       try {
         inActionSequence.current = true;
 
@@ -521,14 +535,14 @@ export default function ContactsPage() {
           console.log(`[TouchesFn] Raccrochage de l'appel en cours (ID: ${contactId})` );
           const hangUpFormData = new FormData();
           hangUpFormData.append('contactId', contactId);
-          hangUpFormAction(hangUpFormData);
+          await hangUpMutation.mutateAsync(hangUpFormData);
         }
 
         console.log(`[TouchesFn] Mise à jour du statut: ${newStatus} (ID: ${contactId})` );
         const statusFormData = new FormData();
         statusFormData.append('contactId', contactId);
         statusFormData.append('status', newStatus);
-        updateContactFormAction(statusFormData);
+        await updateContactMutation.mutateAsync(statusFormData);
 
         const currentIndex = filteredContacts.findIndex(c => c.id === contactId);
         const hasNextContact = currentIndex !== -1 && currentIndex < filteredContacts.length - 1;
@@ -543,17 +557,13 @@ export default function ContactsPage() {
               const callFormData = new FormData();
               callFormData.append('contactId', nextContact.id);
               callFormData.append('phoneNumber', nextContact.phoneNumber);
-              callFormAction(callFormData);
+              callMutation.mutate(callFormData);
             }
           }
         }
 
-        setTimeout(() => {
-          startTransition(() => {
-            fetchAndSetContacts();
-            inActionSequence.current = false;
-          });
-        }, 500);
+        inActionSequence.current = false;
+
       } catch (error) {
         console.error("[TouchesFn] Erreur pendant la séquence d'actions:", error);
         toast.error("Une erreur est survenue pendant la mise à jour" );
@@ -564,16 +574,11 @@ export default function ContactsPage() {
     activeContact,
     contactInCallId,
     filteredContacts,
-    // Suppression des dépendances inutiles
-    // fnKeyMappings,
-    isUpdateContactPending,
-    callFormAction,
-    hangUpFormAction,
-    updateContactFormAction,
-    fetchAndSetContacts,
+    updateContactMutation,
+    callMutation,
+    hangUpMutation,
+    queryClient,
     setActiveContact,
-    setContacts,
-    // toast
   ]);
 
   // Utilisation d'une référence stable pour l'écouteur d'événements
@@ -747,11 +752,10 @@ export default function ContactsPage() {
 
     toast.info("Suppression des contacts existants avant l'importation..." );
 
-    startTransition(async () => {
-      const clearResult = await clearAllDataAction();
-      if (clearResult.success) {
-        toast.success("Contacts existants supprimés avec succès." );
-
+    clearAllDataMutation.mutate(undefined, {
+      onSuccess: () => {
+        // Une fois les données effacées, on procède à l'importation
+        toast.success("Contacts existants supprimés avec succès.");
         const formData = new FormData();
         formData.append('file', fileToProcess);
         const acceptedTypes = [".csv", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "application/vnd.ms-excel"];
@@ -763,28 +767,25 @@ export default function ContactsPage() {
         });
 
         if (!isTypeAccepted) {
-          toast.error(`Type de fichier non supporté: ${fileName}. Veuillez utiliser un fichier CSV ou Excel.` );
+          toast.error(`Type de fichier non supporté: ${fileName}. Veuillez utiliser un fichier CSV ou Excel.`);
           if (inputFileRef.current) inputFileRef.current.value = "";
           return;
         }
-
-        toast.info("Début de l'importation du nouveau fichier..." );
-        safeImportAction(formData);
-
-      } else {
-        toast.error(`Échec de la suppression des contacts : ${clearResult.message}` );
+        toast.info("Début de l'importation du nouveau fichier...");
+        importMutation.mutate(formData);
+      },
+      onError: (error) => {
+         toast.error(`Échec de la suppression des contacts : ${error.message}`);
       }
     });
-  }, [safeImportAction, clearAllDataAction]);
+  }, [importMutation, clearAllDataMutation]);
 
   const handleFileSelectedForDropZone = useCallback(async (file: File) => {
     console.log('[ContactsPage] Fichier sélectionné via UploadDropZone:', file );
-    // Modifier pour gérer la confirmation si des contacts existent déjà
     if (contacts.length > 0) {
       setDroppedFile(file);
       setIsFileDropConfirmOpen(true);
     } else {
-      // Si la table est vide, procéder directement à l'importation
       processFileForImport(file);
     }
   }, [processFileForImport, contacts.length]);
@@ -861,10 +862,9 @@ export default function ContactsPage() {
 
           if (!hangupResponse.ok) {
             console.error(`[CallStatusPolling] Erreur lors de l'appel à /adb/hangup: ${hangupResponse.status}` );
-            // Fallback: on utilise la méthode traditionnelle avec le formulaire
             const formData = new FormData();
             formData.append('contactId', contactInCallId);
-            hangUpFormAction(formData);
+            hangUpMutation.mutate(formData);
           } else {
             console.log(`[CallStatusPolling] Appel à /adb/hangup réussi, l'appel est maintenant terminé` );
 
@@ -873,7 +873,7 @@ export default function ContactsPage() {
             if (hangupData && hangupData.contact) {
               // Si l'API a renvoyé le contact mis à jour, on l'utilise directement
               const updatedContact = hangupData.contact;
-              setContacts(prev => prev.map(c => c.id === contactInCallId ? updatedContact : c));
+              queryClient.invalidateQueries({ queryKey: ['contacts'] });
               if (activeContact && activeContact.id === contactInCallId) {
                 setActiveContactState(updatedContact);
               }
@@ -885,7 +885,7 @@ export default function ContactsPage() {
               if (contactResponse.ok) {
                 const updatedContact = await contactResponse.json();
                 // Mettre à jour le contact dans la liste
-                setContacts(prev => prev.map(c => c.id === contactInCallId ? updatedContact : c));
+                queryClient.invalidateQueries({ queryKey: ['contacts'] });
                 // Mettre à jour le contact actif si c'est celui qui était en appel
                 if (activeContact && activeContact.id === contactInCallId) {
                   setActiveContactState(updatedContact);
@@ -900,22 +900,21 @@ export default function ContactsPage() {
           }
         } catch (error) {
           console.error(`[CallStatusPolling] Exception lors de l'appel à /adb/hangup:`, error );
-          // Fallback vers la méthode traditionnelle
           const formData = new FormData();
           formData.append('contactId', contactInCallId);
-          hangUpFormAction(formData);
+          hangUpMutation.mutate(formData);
         }
 
         // Arrêter le polling puisque l'appel est terminé
         setIsPollingActive(false);
         
         // Forcer un rafraîchissement des contacts pour s'assurer que la durée d'appel est affichée
-        fetchAndSetContacts();
+        queryClient.invalidateQueries({ queryKey: ['contacts'] });
       }
     } catch (error) {
       console.error(`[CallStatusPolling] Erreur lors de la vérification du statut d'appel:`, error);
     }
-  }, [contactInCallId, hangUpFormAction, activeContact, setContacts, setActiveContactState, fetchAndSetContacts]);
+  }, [contactInCallId, hangUpMutation, activeContact, queryClient, setActiveContactState]);
 
   // Effet pour démarrer/arrêter le polling quand contactInCallId change
   useEffect(() => {
@@ -1000,22 +999,26 @@ export default function ContactsPage() {
     // S'assurer que 'dureeAppel' est toujours inclus si présent dans tableColumns
     const initialVisible = tableColumns.map(col => col.id);
     if (!initialVisible.includes('dureeAppel')) {
-      initialVisible.push('dureeAppel');
+      // S'assurer que dureeAppel est ajouté seulement s'il fait partie des colonnes possibles
+      if (tableColumns.find(col => col.id === 'dureeAppel')) {
+        initialVisible.push('dureeAppel');
+      }
     }
     return initialVisible;
   });
 
-  if (isLoading && contacts.length === 0 && !importState.success) {
+  if (isLoading && contacts.length === 0 && !importMutation.isError) {
     let message = "Chargement des contacts...";
-    if (importState.message && !importState.success) {
-      message = importState.message;
+    if (importMutation.error) {
+      const errorMessage = importMutation.error instanceof Error ? importMutation.error.message : "Erreur inconnue lors de l'importation.";
+      message = errorMessage;
     }
     return (
       <div className="flex flex-col items-center justify-center h-screen bg-background text-foreground">
         <Loader2 className="h-16 w-16 animate-spin text-primary mb-6" />
         <p className="text-xl font-medium text-muted-foreground">{message}</p>
-        {!importState.success && importState.message && (
-          <Button onClick={() => window.location.reload()} className="mt-4">Réessayer</Button>
+        {importMutation.isError && (
+          <Button onClick={() => queryClient.refetchQueries({ queryKey: ['contacts']})} className="mt-4">Réessayer le chargement</Button>
         )}
       </div>
     );
@@ -1040,7 +1043,7 @@ export default function ContactsPage() {
               inputFileRef={inputFileRef as React.RefObject<HTMLInputElement>}
               // Utiliser la nouvelle fonction pour gérer le changement de l'input file
               handleFileSelectedForImport={handleFileInputChange}
-              isImportPending={isImportPending}
+              isImportPending={importMutation.isPending}
               isAutosaveSaving={isAutosaveSaving}
               onRequestClearAllData={handleRequestClearAllData}
               activeContact={activeContact}
@@ -1107,10 +1110,13 @@ export default function ContactsPage() {
                       onEditContact={handleEditContactInline}
                       onActiveContactChange={setActiveContact}
                       scrollContainerRef={tableViewportRef}
-                      contactInCallId={
-                        isUpdateContactPending && activeContact && (!updateContactState.data || updateContactState.data.id !== activeContact.id) ? activeContact.id : null
+                      contactInCallId={ 
+                        updateContactMutation.isPending && activeContact && 
+                        (!updateContactMutation.data || (updateContactMutation.data as ContactAppType).id !== activeContact.id) 
+                        ? activeContact.id 
+                        : null
                       }
-                      error={updateContactState.success === false ? updateContactState.message : null}
+                      error={updateContactMutation.isError && updateContactMutation.error ? (updateContactMutation.error instanceof Error ? updateContactMutation.error.message : "Erreur de mise à jour inconnue") : null}
                       columns={tableColumns}
                       visibleColumns={visibleColumns}
                       setVisibleColumns={setVisibleColumns}
@@ -1254,9 +1260,7 @@ export default function ContactsPage() {
                     if (activeContact && activeContact.id === contactInCallId) {
                       const formData = new FormData();
                       formData.append('contactId', contactInCallId);
-                      startTransition(() => {
-                        hangUpFormAction(formData);
-                      });
+                      hangUpMutation.mutate(formData);
                     }
                   }}
                 >

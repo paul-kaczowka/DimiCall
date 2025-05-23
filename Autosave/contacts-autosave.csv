@@ -1,13 +1,13 @@
 firstName,lastName,email,phoneNumber,status,comment,dateRappel,heureRappel,dateRendezVous,heureRendezVous,dateAppel,heureAppel,dureeAppel,callStartTime,source,id
-Paul,Albreg,A.A@ieseg.fr,+33 6 95 90 58 12,Répondeur,,,,,,23/05/2025,12:35:59,,2025-05-23T10:35:59.173253+00:00,,95e8e0b6-5710-4e5b-8dbc-74e4c4fd64a2
-Pierre,Bruton,B.B@ieseg.fr,+33 6 95 90 58 12,,,,,,,,,,,,e859c7d3-613d-4344-8796-215e6eb6eb69
-Sarah,Carap,paul.kaczowka@ieseg.fr,+33 6 95 90 58 12,À rappeler,,,,,,23/05/2025,13:12:16,00:24,2025-05-23T11:12:16.764671+00:00,,fe89d57f-f97b-47c0-b80c-d43257af34ac
-Dimitri,D,paul.kaczowka@ieseg.fr,+33 6 95 90 58 12,Répondeur,testt,,,,,23/05/2025,14:49:20,00:04,2025-05-23T12:49:15.383439+00:00,,3d6b53d3-4a51-489b-90aa-4aadc050386a
-Elise,E,paul.kaczowka@ieseg.fr,+33 6 95 90 58 12,Argumenté,testtt,,,,,23/05/2025,13:37:04,00:13,2025-05-23T11:37:04.868063+00:00,,9f9f0dd8-c72c-4c37-9903-129b0438b983
-Abdel,F,paul.kaczowka@ieseg.fr,+33 6 95 90 58 12,,,,,,,,,,,,127684f4-ee0f-400b-a71f-b7ecbdc0fdf7
-Gérard,G,paul.kaczowka@ieseg.fr,+33 6 95 90 58 12,Pas intéressé,test,,,,,23/05/2025,13:47:00,00:04,2025-05-23T11:46:55.644640+00:00,,67903cd0-1de2-4c27-8134-c8877aaa0ab0
-Hubert,H,paul.kaczowka@ieseg.fr,+33 6 95 90 58 12,Pas intéressé,,,,,,23/05/2025,14:13:09,00:04,2025-05-23T12:13:04.533087+00:00,,cb8c2f4a-2726-4dd9-bd91-b560d5f12398
-Jeanne,J,paul.kaczowka@ieseg.fr,+33 6 95 90 58 12,Liste noire,testtttt,,,,,,,,,,0707e95c-7798-461c-9ae1-3fb7316365a2
-Babo,J,paul.kaczowka@ieseg.fr,+33 6 95 90 58 12,R0,,,,,,,,,,,cec30f06-3de0-4bdd-9221-7984d7cbcca3
-Siturne,J,paul.kaczowka@ieseg.fr,+33 6 95 90 58 12,À rappeler,testtttttttt,,,,,23/05/2025,14:05:07,00:04,2025-05-23T12:05:02.774075+00:00,,e6cf5274-8636-4d03-b276-c5da2aee35db
-polkm,J,paul.kaczowka@ieseg.fr,+33 6 95 90 58 12,R0,,,,,,23/05/2025,14:34:43,00:04,2025-05-23T12:34:38.881969+00:00,,f7e69859-aa05-40e1-84d9-e2823d9be435
+Paul,Albreg,A.A@ieseg.fr,+33 6 95 90 58 12,,,,,,,,,,,,e569f94b-b766-481f-829a-0e2b0c054582
+Pierre,Bruton,B.B@ieseg.fr,+33 6 95 90 58 12,,,,,,,,,,,,88f2d422-e27d-47ef-94e3-d6f66bd1429c
+Sarah,Carap,paul.kaczowka@ieseg.fr,+33 6 95 90 58 12,À rappeler,uhuh,,,,,23/05/2025,16:49:27,00:04,2025-05-23T14:49:22.666669+00:00,,177a3775-5963-4f34-beac-b1fb9eafc35f
+Dimitri,D,paul.kaczowka@ieseg.fr,+33 6 95 90 58 12,Argumenté,erberg,,,,,23/05/2025,16:57:16,00:04,2025-05-23T14:57:11.413356+00:00,,430b9c5a-4497-4aaf-a6bc-e1d1de91388a
+Elise,E,paul.kaczowka@ieseg.fr,+33 6 95 90 58 12,,,,,,,,,,,,1e85999f-6006-427a-a589-e5bf0527f869
+Abdel,F,paul.kaczowka@ieseg.fr,+33 6 95 90 58 12,À rappeler,,,,,,,,,,,f27ff590-45b7-4ba5-8d41-9fdd8ffb082b
+Gérard,G,paul.kaczowka@ieseg.fr,+33 6 95 90 58 12,Argumenté,,,,,,23/05/2025,17:01:25,00:06,2025-05-23T15:01:19.002284+00:00,,62ac5506-3439-4d62-a6e7-e47600ec6265
+Hubert,H,paul.kaczowka@ieseg.fr,+33 6 95 90 58 12,Pas intéressé,tftf,,,,,23/05/2025,17:27:51,00:05,2025-05-23T15:27:45.857241+00:00,,68cd30b3-1543-4902-8b1c-0538d30e122b
+Jeanne,J,paul.kaczowka@ieseg.fr,+33 6 95 90 58 12,,,,,,,,,,,,fa9ecf20-8756-477f-951a-5f79d622e5ce
+Babo,J,paul.kaczowka@ieseg.fr,+33 6 95 90 58 12,Liste noire,testtt,,,,,23/05/2025,17:28:54,00:08,2025-05-23T15:28:54.614607+00:00,,808e180a-ca9f-4dd1-92f5-2e76ca3567d2
+Siturne,J,paul.kaczowka@ieseg.fr,+33 6 95 90 58 12,D0,,,,,,23/05/2025,17:56:16,00:04,2025-05-23T15:56:12.296157+00:00,,2f3a3478-1557-47ff-87ba-c0f52ba42c7c
+polkm,J,paul.kaczowka@ieseg.fr,+33 6 95 90 58 12,,,,,,,,,,,,d9fa1a51-368a-4741-b193-d30f72f83449
