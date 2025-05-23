@@ -280,8 +280,8 @@ const TriStateToggle: React.FC<TriStateToggleProps> = ({ value, onChange, disabl
   );
 };
 
-// Type pour les rendez-vous
-type MeetingType = 'D0' | 'R0-int' | 'R0-ext';
+// Type pour les MeetingTypes et GenderTypes
+type MeetingType = 'D0' | 'R0-int' | 'R0-ext' | 'PremierContact'; // AJOUTÉ 'PremierContact'
 type GenderType = 'Monsieur' | 'Madame';
 
 // Templates d'emails
@@ -323,7 +323,16 @@ Vous pouvez également visiter notre site internet pour de plus amples renseigne
  
 N'hésitez pas à revenir vers moi en cas de question ou d'un besoin supplémentaire d'information.
 
-Bien cordialement,`
+Bien cordialement,`,
+  'PremierContact': (lastName: string, gender: GenderType) => // dateTime n'est pas nécessaire ici
+    `Bonjour ${gender} ${lastName},
+
+Pour resituer mon appel, je suis gérant privé au sein du cabinet de gestion de patrimoine Arcanis Conseil. Je vous envoie l'adresse de notre site web que vous puissiez en savoir d'avantage : https://arcanis-conseil.fr
+
+Le site est avant tout une vitrine, le mieux est de m'appeler si vous souhaitez davantage d'informations ou de prendre un créneau de 30 minutes dans mon agenda via ce lien : https://calendly.com/dimitri-morel-arcanis-conseil/audit
+
+Bien à vous
+--`
 };
 
 // Composant sélecteur de date et heure personnalisé - SUPPRIMÉ
@@ -628,65 +637,77 @@ export const Ribbon = React.forwardRef<HTMLDivElement, RibbonProps>((
       return;
     }
 
-    let rdvDate: Date | undefined = undefined;
+    let emailSubject = "";
+    let emailBody = "";
 
-    if (activeContact.dateRendezVous) {
-      const dateStr = activeContact.dateRendezVous;
-      const timeStr = activeContact.heureRendezVous;
+    if (selectedMeetingType === 'PremierContact') {
+      emailSubject = "Arcanis Conseil - Premier Contact";
+      emailBody = EMAIL_TEMPLATES['PremierContact'](
+        activeContact.lastName,
+        selectedGender
+      );
+    } else {
+      // Logique existante pour les autres types de rendez-vous
+      let rdvDate: Date | undefined = undefined;
 
-      const parsedDateFromDateStr = new Date(dateStr);
+      if (activeContact.dateRendezVous) {
+        const dateStr = activeContact.dateRendezVous;
+        const timeStr = activeContact.heureRendezVous;
 
-      if (isValid(parsedDateFromDateStr)) {
-        const isInputDateOnlyFormat = /^\d{4}-\d{2}-\d{2}$/.test(dateStr);
+        const parsedDateFromDateStr = new Date(dateStr);
 
-        if (isInputDateOnlyFormat && timeStr) {
-          try {
-            const [year, month, day] = dateStr.split('-').map(Number);
-            const [hours, minutes] = timeStr.split(':').map(Number);
-            if (!isNaN(year) && !isNaN(month) && !isNaN(day) && !isNaN(hours) && !isNaN(minutes)) {
-              const combinedDate = new Date(year, month - 1, day, hours, minutes);
-              if (isValid(combinedDate)) {
-                rdvDate = combinedDate;
+        if (isValid(parsedDateFromDateStr)) {
+          const isInputDateOnlyFormat = /^\d{4}-\d{2}-\d{2}$/.test(dateStr);
+
+          if (isInputDateOnlyFormat && timeStr) {
+            try {
+              const [year, month, day] = dateStr.split('-').map(Number);
+              const [hours, minutes] = timeStr.split(':').map(Number);
+              if (!isNaN(year) && !isNaN(month) && !isNaN(day) && !isNaN(hours) && !isNaN(minutes)) {
+                const combinedDate = new Date(year, month - 1, day, hours, minutes);
+                if (isValid(combinedDate)) {
+                  rdvDate = combinedDate;
+                } else {
+                   console.warn(`[Ribbon] La combinaison de la date '${dateStr}' et de l\'heure '${timeStr}' a produit une date invalide pour ${activeContact.id}`);
+                }
               } else {
-                 console.warn(`[Ribbon] La combinaison de la date '${dateStr}' et de l\'heure '${timeStr}' a produit une date invalide pour ${activeContact.id}`);
+                console.warn(`[Ribbon] Numéros invalides dans les parties date/heure de '${dateStr}', '${timeStr}' for ${activeContact.id}`);
               }
-            } else {
-              console.warn(`[Ribbon] Numéros invalides dans les parties date/heure de '${dateStr}', '${timeStr}' for ${activeContact.id}`);
+            } catch (e) {
+              console.error(`[Ribbon] Erreur en combinant la date '${dateStr}' et l\'heure '${timeStr}' pour ${activeContact.id}:`, e);
             }
-          } catch (e) {
-            console.error(`[Ribbon] Erreur en combinant la date '${dateStr}' et l\'heure '${timeStr}' pour ${activeContact.id}:`, e);
+          } else if (!isInputDateOnlyFormat) {
+            // dateStr était probablement une chaîne ISO complète, utilisez parsedDateFromDateStr directement
+            rdvDate = parsedDateFromDateStr;
+          } else {
+            // dateStr était YYYY-MM-DD et pas de timeStr, utilisez parsedDateFromDateStr (l'heure sera minuit UTC ou local)
+            // Pour être sûr, reconstruire en tant que minuit local si c'était YYYY-MM-DD
+             const [year, month, day] = dateStr.split('-').map(Number);
+             if(!isNaN(year) && !isNaN(month) && !isNaN(day)) {
+                 rdvDate = new Date(year, month - 1, day); // Minuit local
+             } else {
+                 console.warn(`[Ribbon] dateRendezVous '${dateStr}' (YYYY-MM-DD) avait des parties invalides et pas de heureRendezVous pour ${activeContact.id}`);
+             }
           }
-        } else if (!isInputDateOnlyFormat) {
-          // dateStr était probablement une chaîne ISO complète, utilisez parsedDateFromDateStr directement
-          rdvDate = parsedDateFromDateStr;
         } else {
-          // dateStr était YYYY-MM-DD et pas de timeStr, utilisez parsedDateFromDateStr (l'heure sera minuit UTC ou local)
-          // Pour être sûr, reconstruire en tant que minuit local si c'était YYYY-MM-DD
-           const [year, month, day] = dateStr.split('-').map(Number);
-           if(!isNaN(year) && !isNaN(month) && !isNaN(day)) {
-               rdvDate = new Date(year, month - 1, day); // Minuit local
-           } else {
-               console.warn(`[Ribbon] dateRendezVous '${dateStr}' (YYYY-MM-DD) avait des parties invalides et pas de heureRendezVous pour ${activeContact.id}`);
-           }
+          console.warn(`[Ribbon] dateRendezVous '${dateStr}' n\'est pas une chaîne de date valide pour ${activeContact.id}`);
         }
-      } else {
-        console.warn(`[Ribbon] dateRendezVous '${dateStr}' n\'est pas une chaîne de date valide pour ${activeContact.id}`);
+      } else if (activeContact.heureRendezVous) {
+        console.warn(`[Ribbon] Seul heureRendezVous ('${activeContact.heureRendezVous}') est présent sans dateRendezVous pour ${activeContact.id}`);
       }
-    } else if (activeContact.heureRendezVous) {
-      console.warn(`[Ribbon] Seul heureRendezVous ('${activeContact.heureRendezVous}') est présent sans dateRendezVous pour ${activeContact.id}`);
-    }
 
-    if (!rdvDate) {
-      console.warn(`[Ribbon] Impossible de déterminer une rdvDate valide pour le contact ${activeContact.id}. L\'email utilisera la valeur par défaut.`);
-    }
+      if (!rdvDate) {
+        console.warn(`[Ribbon] Impossible de déterminer une rdvDate valide pour le contact ${activeContact.id}. L\'email utilisera la valeur par défaut.`);
+      }
 
-    const formattedDateTime = formatDateTimeForEmail(rdvDate);
-    const emailSubject = `Confirmation rendez-vous ${selectedMeetingType === 'D0' ? 'visio' : 'présentiel'} - Arcanis Conseil`;
-    const emailBody = EMAIL_TEMPLATES[selectedMeetingType](
-      activeContact.lastName, 
-      formattedDateTime, 
-      selectedGender
-    );
+      const formattedDateTime = formatDateTimeForEmail(rdvDate);
+      emailSubject = `Confirmation rendez-vous ${selectedMeetingType === 'D0' ? 'visio' : 'présentiel'} - Arcanis Conseil`;
+      emailBody = EMAIL_TEMPLATES[selectedMeetingType](
+        activeContact.lastName, 
+        formattedDateTime, 
+        selectedGender
+      );
+    }
     
     // Encoder le sujet et le corps pour l'URL Gmail
     const encodedSubject = encodeURIComponent(emailSubject);
@@ -1198,6 +1219,13 @@ export const Ribbon = React.forwardRef<HTMLDivElement, RibbonProps>((
                   onClick={() => setSelectedMeetingType('R0-ext')}
                 >
                   R0 (Externe)
+                </Button>
+                <Button
+                  variant={selectedMeetingType === 'PremierContact' ? 'default' : 'outline'}
+                  className="flex-1"
+                  onClick={() => setSelectedMeetingType('PremierContact')}
+                >
+                  1er Contact
                 </Button>
               </div>
             </div>
