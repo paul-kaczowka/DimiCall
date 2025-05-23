@@ -5,6 +5,7 @@ import { type ActionState } from '@/lib/actions-utils'; // Garder ActionState
 import { contactSchema, Contact } from '@/lib/schemas/contact';
 import { revalidatePath } from 'next/cache'; // Importer revalidatePath
 import { differenceInSeconds, isValid } from 'date-fns'; // Supprimé parseDateFns et fr qui ne sont pas utilisés
+import { formatPhoneNumber } from '@/lib/utils'; // Importer la fonction de formatage
 
 // Nouveaux types pour le résultat de l'importation et les informations de mappage
 interface MappingInfo {
@@ -110,20 +111,11 @@ export async function callAction(prevState: ActionState<Contact | null>, formDat
     }
   }
 
-  // Nettoyage final du numéro avant de l'envoyer à l'API
+  // Nettoyage final et formatage du numéro avant de l'envoyer à l'API
   if (phoneNumberToCall) {
-    const originalNumberForLog = phoneNumberToCall;
-    // Supprimer tout ce qui n'est pas un chiffre ou '+'
-    phoneNumberToCall = phoneNumberToCall.replace(/[^0-9+]/g, '');
-    // S'il ne commence pas par +, et qu'il a la bonne longueur pour un numéro français sans le 0 initial (9 chiffres),
-    // ou un numéro français avec le 0 initial (10 chiffres), on peut tenter de le préfixer avec +33
-    if (!phoneNumberToCall.startsWith('+')) {
-        if (phoneNumberToCall.length === 10 && phoneNumberToCall.startsWith('0')) {
-            phoneNumberToCall = `+33${phoneNumberToCall.substring(1)}`;
-        }
-        // Autres logiques de normalisation E.164 pourraient être ajoutées ici si nécessaire
-    }
-    console.log(`[Server Action callAction] Original phone number: '${originalNumberForLog}', Cleaned/Formatted for API: '${phoneNumberToCall}'`);
+    // Appliquer le même formatage que celui utilisé pour l'affichage dans la table
+    phoneNumberToCall = formatPhoneNumber(phoneNumberToCall);
+    console.log(`[Server Action callAction] Final number formatted for API: '${phoneNumberToCall}'`);
   }
 
   if (!phoneNumberToCall) { // Re-vérifier après nettoyage/formatage potentiel

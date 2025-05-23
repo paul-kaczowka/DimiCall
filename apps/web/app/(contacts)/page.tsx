@@ -3,6 +3,7 @@
 import React, { useCallback, useEffect, useState, useRef, startTransition, useMemo } from 'react';
 import { useActionState } from 'react';
 import { format, parseISO, isValid } from 'date-fns';
+import { fr } from 'date-fns/locale';
 import { Ribbon } from '@/components/Ribbon';
 import { ContactTable } from '@/components/ContactTable';
 import { TableSearchBar, type SearchableColumn } from '@/components/ui/TableSearchBar';
@@ -10,16 +11,14 @@ import { useAutosaveFile } from '@/hooks/useAutosaveFile';
 import { toast } from 'react-toastify';
 import { importContactsAction, updateContactAction, clearAllDataAction, callAction, hangUpCallAction } from '@/app/actions';
 import { initialActionState, type ActionState } from '@/lib/actions-utils';
-import { 
-  Loader2,  
-  User, 
-  Mail, 
-  Phone, 
-  Info, 
-  MessageSquareText, 
+import {
+  Loader2,
+  User,
+  Mail,
+  Phone,
+  Info,
+  MessageSquareText,
   Waypoints,
-  PanelLeftOpen,
-  PanelRightClose,
   BellRing,
   CalendarDays,
   Edit3,
@@ -48,12 +47,13 @@ import { StatusBadge, type Status as StatusType } from '@/components/ui/StatusBa
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { TimePickerOnly } from '@/components/ui/TimePickerOnly';
-import { fr } from 'date-fns/locale';
 import { AdbStatusBadge } from '@/components/ui/AdbStatusBadge';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { DndProvider } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
-import { ThemeToggleButton } from "@/components/ui/ThemeToggleButton";
+import { ThemeToggleButton } from '@/components/ui/ThemeToggleButton';
+import UploadDropZone from '@/components/UploadDropZone';
+import ColumnVisibilityDropdown from '../../components/ui/ColumnVisibilityDropdown';
 
 // Au début du fichier, sous les imports, ajouter l'extension de Window
 declare global {
@@ -90,17 +90,17 @@ interface ContactAppType extends ContactSchemaType {
 // Fonction utilitaire pour vérifier et formater des dates de manière sécurisée
 const safeFormat = (date: Date | string | null | undefined, formatStr: string, options = {}) => {
   if (!date) return null;
-  
+
   try {
     // Si c'est une chaîne, essayez de la convertir en objet Date
     const dateObj = typeof date === 'string' ? parseISO(date) : date;
-    
+
     // Vérifiez si la date est valide
     if (!isValid(dateObj)) {
       console.warn("Date invalide détectée:", date);
       return null;
     }
-    
+
     return format(dateObj, formatStr, options);
   } catch (error) {
     console.error("Erreur lors du formatage de la date:", error, date);
@@ -116,14 +116,15 @@ export default function ContactsPage() {
 
   const [contacts, setContacts] = useState<ContactAppType[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [isDragOver, setIsDragOver] = useState(false);
+  // isDragOver n'est plus utilisé au niveau de la page car DropZone gère son propre état de glissement
+  // const [isDragOver, setIsDragOver] = useState(false);
   const [activeContact, setActiveContactState] = useState<ContactAppType | null>(null);
   const [isPanelOpen, setIsPanelOpen] = useState(false);
   const [contactInCallId, setContactInCallId] = useState<string | null>(null);
   const [isExportFormatDialogOpen, setIsExportFormatDialogOpen] = useState(false);
   const [isPollingActive, setIsPollingActive] = useState(false);
   const CALL_STATUS_POLLING_INTERVAL = 2000;
-  
+
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedSearchColumn, setSelectedSearchColumn] = useState('firstName');
 
@@ -160,11 +161,11 @@ export default function ContactsPage() {
   // Calculer le pourcentage de contacts ayant un statut défini
   const statusCompletionPercentage = useMemo(() => {
     if (contacts.length === 0) return 0;
-    
-    const contactsWithStatus = contacts.filter(contact => 
+
+    const contactsWithStatus = contacts.filter(contact =>
       contact.status && contact.status.trim() !== ''
     );
-    
+
     return Math.round((contactsWithStatus.length / contacts.length) * 100);
   }, [contacts]);
 
@@ -186,7 +187,7 @@ export default function ContactsPage() {
   );
   // L'état pour clearAllDataAction n'est plus géré par useActionState ici
   // car nous appelons clearAllDataAction directement et attendons son résultat.
-  
+
   // Fonctions wrappers sécurisées pour les appels d'action
   const safeImportAction = useCallback((formData: FormData) => {
     startTransition(() => {
@@ -199,29 +200,27 @@ export default function ContactsPage() {
       updateContactFormAction(formData);
     });
   }, [updateContactFormAction]);
-  
+
   const safeCallAction = useCallback((formData: FormData) => {
     startTransition(() => {
       callFormAction(formData);
     });
   }, [callFormAction]);
-  
+
   const safeHangUpAction = useCallback((formData: FormData) => {
     startTransition(() => {
       hangUpFormAction(formData);
     });
   }, [hangUpFormAction]);
-  
+
   const inputFileRef = useRef<HTMLInputElement>(null);
   const ribbonRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const tableViewportRef = useRef<HTMLDivElement>(null);
+  const mainPageRef = useRef<HTMLDivElement>(null);
 
   const setActiveContact = (contact: ContactAppType | null) => {
     setActiveContactState(contact);
-    if (!contact && isPanelOpen) {
-        setIsPanelOpen(false);
-    }
   };
 
   const togglePanel = () => {
@@ -265,7 +264,7 @@ export default function ContactsPage() {
     return contacts;
   }, [contacts]);
 
-  const { 
+  const {
     isSaving: isAutosaveSaving,
     error: autosaveHookError,
     fileHandle: autosaveFileHandle,
@@ -286,7 +285,7 @@ export default function ContactsPage() {
   useEffect(() => {
     // Considérer l'autosave comme actif si le fichier handle existe OU si l'autosave a été restauré
     setIsAutosaveActive(!!autosaveFileHandle || isAutoSaveRestored);
-    
+
     // Activer l'autosauvegarde si elle a été restaurée automatiquement
     if (isAutoSaveRestored) {
       toast.success("Autosauvegarde restaurée et activée automatiquement");
@@ -366,13 +365,13 @@ export default function ContactsPage() {
       if (updateContactState.success && updateContactState.data) {
         toast.success(updateContactState.message);
         const updatedContact = updateContactState.data as ContactAppType;
-        setContacts(prevContacts => 
+        setContacts(prevContacts =>
           prevContacts.map(c => c.id === updatedContact.id ? updatedContact : c)
         );
         if (activeContact && activeContact.id === updatedContact.id) {
           setActiveContactState(updatedContact);
         }
-        
+
         // Déclencher l'autosauvegarde après mise à jour
         if (isAutosaveActive) {
           triggerSave(undefined, false, false);
@@ -389,9 +388,9 @@ export default function ContactsPage() {
       if (callState.success && callState.data) {
         toast.success(callState.message);
         const updatedContact = callState.data as ContactAppType;
-        
-        setContacts(prevContacts => 
-          prevContacts.map(contact => 
+
+        setContacts(prevContacts =>
+          prevContacts.map(contact =>
             contact.id === updatedContact.id ? updatedContact : contact
           )
         );
@@ -399,13 +398,13 @@ export default function ContactsPage() {
           setActiveContactState(updatedContact);
           setContactInCallId(updatedContact.id);
         }
-        
+
         // Déclencher l'autosauvegarde après appel
         if (isAutosaveActive) {
           triggerSave(undefined, false, false);
         }
       } else if (callState.success && !callState.data) {
-        toast.success(callState.message + " (Données de contact non reçues pour mise à jour locale).");
+        toast.success(callState.message + " (Données de contact non reçues pour mise à jour locale)." );
       } else {
         toast.error(callState.message);
       }
@@ -416,7 +415,7 @@ export default function ContactsPage() {
   useEffect(() => {
     if (hangUpState.message) {
       if (hangUpState.success && hangUpState.data) {
-        toast.success(hangUpState.message || "Appel terminé et durée enregistrée.");
+        toast.success(hangUpState.message || "Appel terminé et durée enregistrée." );
         const updatedContact = hangUpState.data as ContactAppType;
         setContacts(prevContacts =>
           prevContacts.map(contact =>
@@ -448,23 +447,26 @@ export default function ContactsPage() {
     setIsClearConfirmOpen(true);
   };
 
-  const confirmClearAllData = () => {
+  const confirmClearAllData = useCallback(() => {
     setIsClearConfirmOpen(false);
     startTransition(async () => {
       const result = await clearAllDataAction();
       if (result.success) {
-        toast.success(result.message || "Toutes les données ont été effacées.");
+        toast.success(result.message || "Toutes les données ont été effacées." );
         fetchAndSetContacts();
         setActiveContact(null);
         if (autosaveFileHandle) {
           resetFileHandle();
-          toast.info("La session d'autosave a été réinitialisée.");
+          toast.info("La session d'autosave a été réinitialisée." );
         }
       } else {
-        toast.error(result.message || "Erreur lors de la suppression des données.");
+        toast.error(result.message || "Erreur lors de la suppression des données." );
       }
     });
-  };
+  }, [
+    // Suppression de la dépendance inutile
+    // clearAllDataAction
+  ]);
 
   // Référence pour suivre les séquences d'actions en cours
   const inActionSequence = React.useRef(false);
@@ -472,7 +474,7 @@ export default function ContactsPage() {
   // Remplacer complètement la fonction mainFnKeyActionLogic par une implémentation plus robuste
   const handleFunctionKey = useCallback((event: KeyboardEvent) => {
     const relevantKeys = ['F2', 'F3', 'F4', 'F5', 'F6', 'F7', 'F8', 'F9', 'F10'];
-    
+
     // Si la touche n'est pas une touche de fonction que nous gérons, ne rien faire.
     // Cela permet aux événements normaux de saisie de fonctionner.
     if (!relevantKeys.includes(event.key)) {
@@ -484,7 +486,7 @@ export default function ContactsPage() {
 
     // Vérifier si on a un contact actif
     if (!activeContact || !activeContact.id) {
-      toast.info("Veuillez d'abord sélectionner un contact valide");
+      toast.info("Veuillez d'abord sélectionner un contact valide" );
       return;
     }
 
@@ -510,28 +512,28 @@ export default function ContactsPage() {
     const newStatus = mapping.statusName;
     const isInCall = contactInCallId === contactId;
 
-    setContacts(prevContacts => 
-      prevContacts.map(contact => 
-        contact.id === contactId 
+    setContacts(prevContacts =>
+      prevContacts.map(contact =>
+        contact.id === contactId
           ? {...contact, status: newStatus}
           : contact
       )
     );
 
-    toast.success(`Statut "${newStatus}" appliqué à ${contactName}`);
+    toast.success(`Statut "${newStatus}" appliqué à ${contactName}` );
 
     startTransition(() => {
       try {
         inActionSequence.current = true;
 
         if (isInCall) {
-          console.log(`[TouchesFn] Raccrochage de l'appel en cours (ID: ${contactId})`);
+          console.log(`[TouchesFn] Raccrochage de l'appel en cours (ID: ${contactId})` );
           const hangUpFormData = new FormData();
           hangUpFormData.append('contactId', contactId);
           hangUpFormAction(hangUpFormData);
         }
 
-        console.log(`[TouchesFn] Mise à jour du statut: ${newStatus} (ID: ${contactId})`);
+        console.log(`[TouchesFn] Mise à jour du statut: ${newStatus} (ID: ${contactId})` );
         const statusFormData = new FormData();
         statusFormData.append('contactId', contactId);
         statusFormData.append('status', newStatus);
@@ -539,14 +541,14 @@ export default function ContactsPage() {
 
         const currentIndex = filteredContacts.findIndex(c => c.id === contactId);
         const hasNextContact = currentIndex !== -1 && currentIndex < filteredContacts.length - 1;
-        
+
         if (hasNextContact) {
           const nextContact = filteredContacts[currentIndex + 1];
           if (nextContact && nextContact.id) {
-            console.log(`[TouchesFn] Passage au contact suivant: ${nextContact.firstName || 'Contact'} (ID: ${nextContact.id})`);
+            console.log(`[TouchesFn] Passage au contact suivant: ${nextContact.firstName || 'Contact'} (ID: ${nextContact.id})` );
             setActiveContact(nextContact);
             if (nextContact.phoneNumber) {
-              console.log(`[TouchesFn] Appel du contact suivant (ID: ${nextContact.id}, Tél: ${nextContact.phoneNumber})`);
+              console.log(`[TouchesFn] Appel du contact suivant (ID: ${nextContact.id}, Tél: ${nextContact.phoneNumber})` );
               const callFormData = new FormData();
               callFormData.append('contactId', nextContact.id);
               callFormData.append('phoneNumber', nextContact.phoneNumber);
@@ -563,23 +565,24 @@ export default function ContactsPage() {
         }, 500);
       } catch (error) {
         console.error("[TouchesFn] Erreur pendant la séquence d'actions:", error);
-        toast.error("Une erreur est survenue pendant la mise à jour");
+        toast.error("Une erreur est survenue pendant la mise à jour" );
         inActionSequence.current = false;
       }
     });
   }, [
-    activeContact, 
-    contactInCallId, 
-    filteredContacts, 
-    fnKeyMappings,
+    activeContact,
+    contactInCallId,
+    filteredContacts,
+    // Suppression des dépendances inutiles
+    // fnKeyMappings,
     isUpdateContactPending,
     callFormAction,
-    hangUpFormAction, 
+    hangUpFormAction,
     updateContactFormAction,
     fetchAndSetContacts,
     setActiveContact,
     setContacts,
-    toast
+    // toast
   ]);
 
   // Utilisation d'une référence stable pour l'écouteur d'événements
@@ -590,12 +593,12 @@ export default function ContactsPage() {
   useEffect(() => {
     // Utiliser la référence stable pour éviter les installations/suppressions inutiles
     window.addEventListener('keydown', stableHandleFunctionKey, { capture: true });
-    
-    console.log("[TouchesFn] Écouteur d'événements installé pour les touches fonction");
+
+    console.log("[TouchesFn] Écouteur d'événements installé pour les touches fonction" );
 
     return () => {
       window.removeEventListener('keydown', stableHandleFunctionKey, { capture: true });
-      console.log("[TouchesFn] Écouteur d'événements supprimé pour les touches fonction");
+      console.log("[TouchesFn] Écouteur d'événements supprimé pour les touches fonction" );
     };
   }, [stableHandleFunctionKey]);
 
@@ -621,7 +624,7 @@ export default function ContactsPage() {
 
   const handleRequestManualExport = () => {
     if (filteredContacts.length === 0) {
-      toast.warn("Aucun contact à exporter.");
+      toast.warn("Aucun contact à exporter." );
       return;
     }
     setIsExportFormatDialogOpen(true);
@@ -629,7 +632,7 @@ export default function ContactsPage() {
 
   const exportToXLSX = (contactsToExport: ContactAppType[]) => {
     if (contactsToExport.length === 0) {
-      toast.warn("Aucun contact à exporter.");
+      toast.warn("Aucun contact à exporter." );
       return;
     }
     const worksheet = XLSX.utils.json_to_sheet(contactsToExport.map(c => ({
@@ -653,13 +656,13 @@ export default function ContactsPage() {
     const excelBuffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
     const data = new Blob([excelBuffer], {type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;charset=UTF-T-8"});
     saveAs(data, "contacts.xlsx");
-    toast.success("Contacts exportés en XLSX !");
+    toast.success("Contacts exportés en XLSX !" );
     setIsExportFormatDialogOpen(false);
   };
 
   const exportToCSV = (contactsToExport: ContactAppType[]) => {
     if (contactsToExport.length === 0) {
-      toast.warn("Aucun contact à exporter.");
+      toast.warn("Aucun contact à exporter." );
       return;
     }
     const csvData = contactsToExport.map(c => ({
@@ -682,45 +685,45 @@ export default function ContactsPage() {
     const csvString = XLSX.utils.sheet_to_csv(worksheet);
     const data = new Blob(["\uFEFF" + csvString], {type: "text/csv;charset=utf-8;"});
     saveAs(data, "contacts.csv");
-    toast.success("Contacts exportés en CSV !");
+    toast.success("Contacts exportés en CSV !" );
     setIsExportFormatDialogOpen(false);
   };
 
   const handleBookingCreated = useCallback(async (bookingInfo: { date: string; time: string; }) => {
     if (!activeContact || !activeContact.id) {
-      toast.warn("Aucun contact actif pour associer le rendez-vous. Veuillez sélectionner un contact.");
+      toast.warn("Aucun contact actif pour associer le rendez-vous. Veuillez sélectionner un contact." );
       return;
     }
-    console.log("[ContactsPage] handleBookingCreated - bookingInfo:", bookingInfo, "activeContactId:", activeContact.id);
+    console.log("[ContactsPage] handleBookingCreated - bookingInfo:", bookingInfo, "activeContactId:", activeContact.id );
 
     const formData = new FormData();
     formData.append('contactId', activeContact.id);
     formData.append('bookingDate', bookingInfo.date);
     formData.append('bookingTime', bookingInfo.time);
 
-    console.log("[ContactsPage] handleBookingCreated - Données envoyées à updateContactFormAction:", Object.fromEntries(formData.entries()));
+    console.log("[ContactsPage] handleBookingCreated - Données envoyées à updateContactFormAction:", Object.fromEntries(formData.entries()) );
 
     safeUpdateContactAction(formData);
   }, [activeContact, safeUpdateContactAction]);
 
   const handleRappelDateTimeSelected = useCallback(async (dateTime: Date) => {
     if (!activeContact || !activeContact.id) {
-      toast.warn("Aucun contact actif pour programmer un rappel. Veuillez sélectionner un contact.");
+      toast.warn("Aucun contact actif pour programmer un rappel. Veuillez sélectionner un contact." );
       return;
     }
 
     if (!isValid(dateTime)) {
-      toast.error("La date sélectionnée n'est pas valide.");
+      toast.error("La date sélectionnée n'est pas valide." );
       return;
     }
 
     const dateRappel = format(dateTime, 'yyyy-MM-dd');
     const heureRappel = format(dateTime, 'HH:mm');
 
-    console.log(`[ContactsPage] Rappel programmé pour ${activeContact.firstName} ${activeContact.lastName} (ID: ${activeContact.id}) le ${dateRappel} à ${heureRappel}`);
-    
+    console.log(`[ContactsPage] Rappel programmé pour ${activeContact.firstName} ${activeContact.lastName} (ID: ${activeContact.id}) le ${dateRappel} à ${heureRappel}` );
+
     const formattedDisplayDate = safeFormat(dateTime, 'dd/MM/yyyy', { locale: fr });
-    toast.info(`Rappel programmé pour ${activeContact.firstName} le ${formattedDisplayDate || 'date invalide'} à ${heureRappel}.`);
+    toast.info(`Rappel programmé pour ${activeContact.firstName} le ${formattedDisplayDate || 'date invalide'} à ${heureRappel}.` );
 
     const formData = new FormData();
     formData.append('contactId', activeContact.id);
@@ -730,95 +733,75 @@ export default function ContactsPage() {
     safeUpdateContactAction(formData);
   }, [activeContact, safeUpdateContactAction]);
 
-  const processFileForImport = async (file: File) => {
-    toast.info("Suppression des contacts existants avant l'importation...");
-    
+  const [droppedFile, setDroppedFile] = useState<File | null>(null);
+  const [isFileDropConfirmOpen, setIsFileDropConfirmOpen] = useState(false);
+  // Nouvel état pour suivre si un drag est en cours au-dessus de la zone du tableau
+  const [isDragOverTable, setIsDragOverTable] = useState(false);
+
+  const processFileForImport = useCallback(async (fileToProcess: File) => {
+    if (!fileToProcess) {
+        toast.warn("Fichier non valide pour l'importation." );
+        return;
+    }
+
+    toast.info("Suppression des contacts existants avant l'importation..." );
+
     startTransition(async () => {
-      const clearResult = await clearAllDataAction(); // Appel direct de l'action serveur
+      const clearResult = await clearAllDataAction();
       if (clearResult.success) {
-        toast.success("Contacts existants supprimés avec succès.");
-        
+        toast.success("Contacts existants supprimés avec succès." );
+
         const formData = new FormData();
-        formData.append('file', file);
+        formData.append('file', fileToProcess);
         const acceptedTypes = [".csv", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "application/vnd.ms-excel"];
-        const fileExtension = "." + file.name.split('.').pop()?.toLowerCase();
+        const fileName = fileToProcess.name;
+        const fileExtension = "." + fileName.split('.').pop()?.toLowerCase();
         const isTypeAccepted = acceptedTypes.some(type => {
           if (type.startsWith('.')) return fileExtension === type;
-          return file.type === type;
+          return fileToProcess.type === type;
         });
 
         if (!isTypeAccepted) {
-          toast.error(`Type de fichier non supporté: ${file.name}. Veuillez utiliser un fichier CSV ou Excel.`);
+          toast.error(`Type de fichier non supporté: ${fileName}. Veuillez utiliser un fichier CSV ou Excel.` );
           if (inputFileRef.current) inputFileRef.current.value = "";
           return;
         }
-        
-        toast.info("Début de l'importation du nouveau fichier...");
-        safeImportAction(formData); // Nouvel appel via le wrapper
+
+        toast.info("Début de l'importation du nouveau fichier..." );
+        safeImportAction(formData);
 
       } else {
-        toast.error(`Échec de la suppression des contacts : ${clearResult.message}`);
-        // Optionnel: ne pas importer si la suppression échoue.
+        toast.error(`Échec de la suppression des contacts : ${clearResult.message}` );
       }
     });
-  };
+  }, [safeImportAction, clearAllDataAction]);
 
-  const handleFileSelectedForImport = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelectedForDropZone = useCallback(async (file: File) => {
+    console.log('[ContactsPage] Fichier sélectionné via UploadDropZone:', file );
+    // Modifier pour gérer la confirmation si des contacts existent déjà
+    if (contacts.length > 0) {
+      setDroppedFile(file);
+      setIsFileDropConfirmOpen(true);
+    } else {
+      // Si la table est vide, procéder directement à l'importation
+      processFileForImport(file);
+    }
+  }, [processFileForImport, contacts.length]);
+
+   // Nouvelle fonction pour gérer la sélection de fichier via l'input (utilisée dans Ribbon)
+  const handleFileInputChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
     if (event.target.files && event.target.files.length > 0) {
       const file = event.target.files[0];
       processFileForImport(file);
     } else {
-      toast.warn("Aucun fichier sélectionné ou sélection annulée.");
+      toast.warn("Aucun fichier sélectionné pour l'importation." );
     }
-  };
-
-  const handleDragOver = (event: React.DragEvent<HTMLDivElement>) => {
-    // Seulement preventDefault si des fichiers sont glissés pour permettre le drop de fichiers
-    if (event.dataTransfer.types.includes('Files')) {
-      event.preventDefault();
-      setIsDragOver(true);
-    } else {
-      // Si ce ne sont pas des fichiers, ne pas interférer et ne pas afficher l'indicateur de drop
-      setIsDragOver(false);
-    }
-  };
-
-  const handleDragEnter = (event: React.DragEvent<HTMLDivElement>) => {
-    // Seulement preventDefault et afficher l'indicateur si des fichiers sont glissés
-    if (event.dataTransfer.types.includes('Files')) {
-      event.preventDefault();
-      setIsDragOver(true);
-    }
-  };
-
-  const handleDragLeave = (event: React.DragEvent<HTMLDivElement>) => {
-    if (event.currentTarget.contains(event.relatedTarget as Node)) {
-      return;
-    }
-    // Si on quitte la zone, toujours enlever l'indicateur de drop
-    setIsDragOver(false);
-  };
-
-  const handleDrop = (event: React.DragEvent<HTMLDivElement>) => {
-    // Uniquement si des fichiers sont déposés
-    if (event.dataTransfer.types.includes('Files') && event.dataTransfer.files && event.dataTransfer.files.length > 0) {
-      event.preventDefault(); // Important de le mettre ici, conditionnellement
-      setIsDragOver(false);
-      if (inputFileRef.current) inputFileRef.current.value = "";
-      const file = event.dataTransfer.files[0];
-      processFileForImport(file);
-      event.dataTransfer.clearData();
-    } else {
-      // Si ce n'est pas un drop de fichier, on réinitialise au cas où et on ne fait rien d'autre
-      setIsDragOver(false);
-      console.log("[ContactsPage] Drop event not involving files, likely an internal DND operation or empty drop.");
-    }
-  };
+  }, [processFileForImport]);
 
   const handleEditContactInline = useCallback(async (updatedField: Partial<ContactAppType>): Promise<ContactAppType | null> => {
     if (!updatedField.id) {
-      toast.error("ID du contact manquant pour la mise à jour.");
-      console.error("[ContactsPage] Tentative de mise à jour sans ID de contact.", updatedField);
+      toast.error("ID du contact manquant pour la mise à jour." );
+      console.error("[ContactsPage] Tentative de mise à jour sans ID de contact.", updatedField );
       return null;
     }
 
@@ -836,7 +819,7 @@ export default function ContactsPage() {
       }
     });
 
-    console.log("[ContactsPage] handleEditContactInline - Données envoyées à updateContactFormAction:", Object.fromEntries(formData.entries()));
+    console.log("[ContactsPage] handleEditContactInline - Données envoyées à updateContactFormAction:", Object.fromEntries(formData.entries()) );
 
     safeUpdateContactAction(formData);
 
@@ -857,13 +840,13 @@ export default function ContactsPage() {
     try {
       const response = await fetch('/api/call/status');
       const data = await response.json();
-      
-      console.log(`[CallStatusPolling] Statut d'appel vérifié: ${JSON.stringify(data)}`);
-      
+
+      console.log(`[CallStatusPolling] Statut d'appel vérifié: ${JSON.stringify(data)}` );
+
       // Si un appel était en cours (contactInCallId existe) mais n'est plus actif selon l'API
       if (contactInCallId && !data.call_in_progress) {
-        console.log(`[CallStatusPolling] Appel terminé détecté pour le contact ID: ${contactInCallId}`);
-        
+        console.log(`[CallStatusPolling] Appel terminé détecté pour le contact ID: ${contactInCallId}` );
+
         try {
           // Appeler directement l'API hangup pour calculer la durée d'appel
           const hangupResponse = await fetch('/api/hangup', {
@@ -873,16 +856,16 @@ export default function ContactsPage() {
             },
             body: JSON.stringify({ contact_id: contactInCallId })
           });
-          
+
           if (!hangupResponse.ok) {
-            console.error(`[CallStatusPolling] Erreur lors de l'appel à /api/hangup: ${hangupResponse.status}`);
+            console.error(`[CallStatusPolling] Erreur lors de l'appel à /api/hangup: ${hangupResponse.status}` );
             // Fallback: on utilise la méthode traditionnelle avec le formulaire
             const formData = new FormData();
             formData.append('contactId', contactInCallId);
             hangUpFormAction(formData);
           } else {
-            console.log(`[CallStatusPolling] Appel à /api/hangup réussi, l'appel est maintenant terminé`);
-            
+            console.log(`[CallStatusPolling] Appel à /api/hangup réussi, l'appel est maintenant terminé` );
+
             // Récupérer les nouvelles données du contact pour rafraîchir l'interface
             const contactResponse = await fetch(`/api/contacts/${contactInCallId}`);
             if (contactResponse.ok) {
@@ -894,43 +877,47 @@ export default function ContactsPage() {
                 setActiveContactState(updatedContact);
               }
               // Afficher un message de succès
-              toast.success(`Appel terminé. Durée: ${updatedContact.dureeAppel || 'non disponible'}`);
+              toast.success(`Appel terminé. Durée: ${updatedContact.dureeAppel || 'non disponible'}` );
             }
-            
+
             // Réinitialiser l'ID du contact en appel
             setContactInCallId(null);
           }
         } catch (error) {
-          console.error(`[CallStatusPolling] Exception lors de l'appel à /api/hangup:`, error);
+          console.error(`[CallStatusPolling] Exception lors de l'appel à /api/hangup:`, error );
           // Fallback vers la méthode traditionnelle
           const formData = new FormData();
           formData.append('contactId', contactInCallId);
           hangUpFormAction(formData);
         }
-        
+
         // Arrêter le polling puisque l'appel est terminé
         setIsPollingActive(false);
       }
-    } catch (error) {
+    }
+    // else if (!contactInCallId && isPollingActive) { // Cette condition est déjà gérée par le useEffect plus bas
+    //   setIsPollingActive(false);
+    // }
+     catch (error) {
       console.error(`[CallStatusPolling] Erreur lors de la vérification du statut d'appel:`, error);
     }
   }, [contactInCallId, hangUpFormAction, activeContact, setContacts, setActiveContactState]);
-  
+
   // Effet pour démarrer/arrêter le polling quand contactInCallId change
   useEffect(() => {
     let intervalId: NodeJS.Timeout | null = null;
-    
+
     if (contactInCallId && !isPollingActive) {
-      console.log(`[CallStatusPolling] Démarrage du polling pour le contact ID: ${contactInCallId}`);
+      console.log(`[CallStatusPolling] Démarrage du polling pour le contact ID: ${contactInCallId}` );
       setIsPollingActive(true);
-      
+
       // Attendre 3 secondes avant de commencer le polling pour laisser l'appel s'établir
       const timeoutId = setTimeout(() => {
         intervalId = setInterval(checkCallStatus, CALL_STATUS_POLLING_INTERVAL);
         // Exécuter une première vérification immédiatement
         checkCallStatus();
       }, 3000);
-      
+
       return () => {
         clearTimeout(timeoutId);
         if (intervalId) clearInterval(intervalId);
@@ -938,11 +925,65 @@ export default function ContactsPage() {
     } else if (!contactInCallId && isPollingActive) {
       setIsPollingActive(false);
     }
-    
+
     return () => {
       if (intervalId) clearInterval(intervalId);
     };
   }, [contactInCallId, isPollingActive, checkCallStatus]);
+
+  // Gestionnaires d'événements pour le drag and drop sur la zone du tableau
+  const handleDragOver = useCallback((event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault(); // Permet le drop
+    // Ne pas mettre à jour l'état ici, useDrop dans UploadDropZone s'en charge
+  }, []);
+
+  const handleDragEnter = useCallback((event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    console.log('[ContactsPage] handleDragEnter sur tableViewportRef');
+    // Activer l'état de drag over uniquement si des contacts sont présents
+    if (filteredContacts.length > 0) {
+      setIsDragOverTable(true);
+    }
+  }, [filteredContacts.length]);
+
+  const handleDragLeave = useCallback((event: React.DragEvent<HTMLDivElement>) => {
+    // Vérifier si le drag leave est vraiment en dehors de l'élément ou juste d'un enfant
+    if (!tableViewportRef.current?.contains(event.relatedTarget as Node)) {
+      console.log('[ContactsPage] handleDragLeave hors de tableViewportRef');
+      setIsDragOverTable(false);
+    }
+  }, []);
+
+  const handleDrop = useCallback((event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    console.log('[ContactsPage] handleDrop sur tableViewportRef');
+    setIsDragOverTable(false); // Désactiver l'état de drag over après le drop
+    // La logique de traitement du fichier est gérée par UploadDropZone grâce à react-dnd
+    // Ne pas appeler processFileForImport ou handleFileSelectedForDropZone ici directement
+  }, []);
+
+  // Ajout des états pour gérer les colonnes visibles
+  const tableColumns = useMemo(() => [
+    { id: 'id', label: 'ID' },
+    { id: 'firstName', label: 'Prénom' },
+    { id: 'lastName', label: 'Nom' },
+    { id: 'email', label: 'Email' },
+    { id: 'phoneNumber', label: 'Téléphone' },
+    { id: 'status', label: 'Statut' },
+    { id: 'source', label: 'Source' },
+    { id: 'dateAppel', label: 'Date Appel' },
+    { id: 'heureAppel', label: 'Heure Appel' },
+    { id: 'dateRappel', label: 'Date Rappel' },
+    { id: 'heureRappel', label: 'Heure Rappel' },
+    { id: 'dateRendezVous', label: 'Date RDV' },
+    { id: 'heureRendezVous', label: 'Heure RDV' },
+    { id: 'comment', label: 'Commentaire' }
+  ], []);
+
+  const [visibleColumns, setVisibleColumns] = useState<string[]>(
+    // Initialiser avec tous les IDs de colonnes pour rendre toutes les colonnes visibles par défaut
+    tableColumns.map(col => col.id)
+  );
 
   if (isLoading && contacts.length === 0 && !importState.success) {
     let message = "Chargement des contacts...";
@@ -961,15 +1002,11 @@ export default function ContactsPage() {
   }
 
   return (
-    <div 
+    <div
+      ref={mainPageRef}
       className={cn(
-        "flex flex-col h-screen bg-background text-foreground relative overflow-hidden",
-        isDragOver && "outline-dashed outline-2 outline-offset-[-4px] outline-primary rounded-lg"
+        "flex flex-col h-screen bg-background text-foreground relative overflow-hidden"
       )}
-      onDragOver={handleDragOver}
-      onDragEnter={handleDragEnter}
-      onDragLeave={handleDragLeave}
-      onDrop={handleDrop}
     >
       <header className="shrink-0 z-20 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 shadow-sm">
         <div className="px-2 md:px-6 py-2 md:py-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 md:gap-4">
@@ -977,11 +1014,12 @@ export default function ContactsPage() {
             <h1 className="text-2xl font-bold tracking-tight text-gray-200">DimiCall</h1>
           </div>
           <div className="flex-grow w-full p-2 border rounded-lg border-border overflow-hidden">
-            <Ribbon 
+            <Ribbon
               ref={ribbonRef}
               selectedContactEmail={activeContact?.email}
               inputFileRef={inputFileRef as React.RefObject<HTMLInputElement>}
-              handleFileSelectedForImport={handleFileSelectedForImport}
+              // Utiliser la nouvelle fonction pour gérer le changement de l'input file
+              handleFileSelectedForImport={handleFileInputChange}
               isImportPending={isImportPending}
               isAutosaveSaving={isAutosaveSaving}
               onRequestClearAllData={handleRequestClearAllData}
@@ -999,624 +1037,100 @@ export default function ContactsPage() {
             />
           </div>
           <ThemeToggleButton />
-          <Button 
-            variant="outline" 
-            size="icon" 
-            onClick={togglePanel}
-            className="h-9 w-9 rounded-full shadow-md bg-background hover:bg-muted shrink-0 self-end sm:self-auto"
-            aria-label={isPanelOpen ? "Fermer le panneau" : "Ouvrir le panneau"}
-          >
-            {isPanelOpen ? <PanelRightClose className="h-5 w-5" /> : <PanelLeftOpen className="h-5 w-5" />}
-          </Button>
+          <ColumnVisibilityDropdown 
+            columns={tableColumns}
+            visibleColumns={visibleColumns}
+            setVisibleColumns={setVisibleColumns}
+          />
         </div>
       </header>
 
-      <div className="flex flex-1 overflow-hidden min-h-0 relative">
-        <main className={cn(
-          "flex-1 flex flex-col overflow-y-auto transition-all duration-300 ease-in-out p-2 sm:p-4 md:p-6 pt-0",
-          "min-w-0"
-        )}>
-          <div className='flex-grow'> 
-            <div className="mb-2 sm:mb-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 sm:gap-4">
-              <div className="w-full sm:w-auto">
-                <TableSearchBar
-                  columns={searchableColumns}
-                  initialSelectedColumnValue={selectedSearchColumn}
-                  initialSearchTerm={searchTerm}
-                  onSearchChange={handleSearchChange}
-                  className="w-full"
-                />
-              </div>
-            </div>
-            <div 
-              ref={tableViewportRef} 
-              className="overflow-auto contain-paint will-change-transform"
-              style={{ maxHeight: 'calc(100vh - 300px)' }} 
-            >
-              <DndProvider backend={HTML5Backend}>
-                {isLoading ? (
-                  <div className="flex items-center justify-center h-[300px]">
-                    <Loader2 className="h-12 w-12 animate-spin text-primary" />
-                  </div>
-                ) : (
-                  <ContactTable
-                    data={filteredContacts}
-                    onEditContact={handleEditContactInline}
-                    onActiveContactChange={setActiveContact}
-                    scrollContainerRef={tableViewportRef}
-                    isProcessingId={
-                      isUpdateContactPending && activeContact && (!updateContactState.data || updateContactState.data.id !== activeContact.id) ? activeContact.id : null
-                    }
-                    error={updateContactState.success === false ? updateContactState.message : null}
+      {/* Envelopper la zone principale avec DndProvider */}
+      <DndProvider backend={HTML5Backend}>
+        <div className="flex flex-1 overflow-hidden min-h-0 relative">
+          <main className={cn(
+            "flex-1 flex flex-col overflow-y-auto transition-all duration-300 ease-in-out p-2 sm:p-4 md:p-6 pt-0",
+            "min-w-0"
+          )}
+          >
+            <div className='flex-grow'>
+              <div className="mb-2 sm:mb-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 sm:gap-4">
+                <div className="w-full sm:w-auto">
+                  <TableSearchBar
+                    columns={searchableColumns}
+                    initialSelectedColumnValue={selectedSearchColumn}
+                    initialSearchTerm={searchTerm}
+                    onSearchChange={handleSearchChange}
+                    className="w-full"
                   />
-                )}
-              </DndProvider>
-            </div>
-          </div>
-          
-          <footer className="shrink-0 mt-auto pt-4 pb-2 text-xs text-muted-foreground flex items-center justify-between">
-            <div>
-              {autosaveFileHandle && <span className="text-green-600">(Autosave activé)</span>}
-              {isAutosaveSaving && <span className="ml-2"><Loader2 className="h-3 w-3 animate-spin inline-block" /> Sauvegarde auto...</span>}
-            </div>
-            <div className="font-medium text-center mx-auto">
-              <span className="text-sm">{filteredContacts.length} contact{filteredContacts.length === 1 ? '' : 's'}</span>
-            </div>
-            <div>
-              <AdbStatusBadge />
-            </div>
-          </footer>
-        </main>
+                </div>
+              </div>
+              <div
+                ref={tableViewportRef}
+                className="overflow-auto contain-paint will-change-transform relative"
+                style={{ maxHeight: 'calc(100vh - 300px)' }}
+                onDragOver={handleDragOver}
+                onDragEnter={handleDragEnter}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
+              >
+                  {isLoading ? (
+                    <div className="flex items-center justify-center h-[300px]">
+                      <Loader2 className="h-12 w-12 animate-spin text-primary" />
+                     </div>
+                   ) : (
+                    <>
+                      {/* Afficher ContactTable si des contacts sont présents */}
+                      {filteredContacts.length > 0 && (
+                    <ContactTable
+                      data={filteredContacts}
+                      onEditContact={handleEditContactInline}
+                      onActiveContactChange={setActiveContact}
+                      scrollContainerRef={tableViewportRef}
+                      isProcessingId={
+                        isUpdateContactPending && activeContact && (!updateContactState.data || updateContactState.data.id !== activeContact.id) ? activeContact.id : null
+                      }
+                      error={updateContactState.success === false ? updateContactState.message : null}
+                      columns={tableColumns}
+                      visibleColumns={visibleColumns}
+                      setVisibleColumns={setVisibleColumns}
+                    />
+                      )}
 
-        <aside 
-          ref={panelRef}
-          className={cn(
-            "h-full bg-card border-l shadow-lg transition-all duration-300 ease-in-out z-40",
-            "overflow-y-auto scrollbar-thin scrollbar-thumb-muted scrollbar-track-transparent",
-            "fixed top-0 right-0",
-            "lg:relative lg:right-auto",
-            isPanelOpen ? "w-[90vw] sm:w-[350px] p-4" : "w-0 p-0 border-l-0 opacity-0"
-          )}
-        >
-          {isPanelOpen && (activeContact ? (
-            <div className="p-0 flex flex-col h-full">
-              <div className="flex-grow p-4 space-y-3 overflow-y-auto scrollbar-thin scrollbar-thumb-muted scrollbar-track-transparent">
-                <div className="flex flex-col items-center mb-4">
-                  <span className="relative flex size-8 shrink-0 overflow-hidden rounded-full h-16 w-16 text-2xl flex-shrink-0">
-                    <span className="bg-muted flex size-full items-center justify-center rounded-full">
-                      {activeContact.firstName?.[0]}{activeContact.lastName?.[0]}
-                    </span>
-                  </span>
-                  <h2 className="text-xl font-semibold mt-2">
-                    {activeContact.firstName} {activeContact.lastName}
-                  </h2>
-                  <p className="text-sm text-muted-foreground">ID: {activeContact.id}</p>
-                </div>
-                <div className="md:grid md:grid-cols-2 md:gap-x-6">
-                  <div className="space-y-3">
-                    <section>
-                      <h3 className="text-xs font-semibold text-primary mb-1.5">Coordonnées</h3>
-                      <div className="space-y-1.5">
-                        <div className="py-1 group relative">
-                          <div className="flex items-start space-x-3">
-                            <Mail className="h-5 w-5 text-muted-foreground mt-0.5 flex-shrink-0" />
-                            <div className="flex-1">
-                              <p className="text-xs font-medium text-muted-foreground">E-mail</p>
-                              <div 
-                                className="font-medium min-h-[28px] flex items-center transition-colors duration-150 ease-in-out text-sm hover:bg-muted/30 rounded-md -m-px p-px cursor-text"
-                                onClick={(event) => {
-                                  const container = event.currentTarget as HTMLElement;
-                                  container.innerHTML = '';
-                                  const input = document.createElement('input');
-                                  input.type = 'text';
-                                  input.value = activeContact.email || '';
-                                  input.className = 'h-full py-1 px-2 text-sm border-muted focus:ring-1 focus:ring-ring focus:ring-offset-0 bg-background rounded-sm min-w-[50px] w-full';
-                                  input.style.width = '100%';
-                                  
-                                  container.appendChild(input);
-                                  
-                                  input.focus();
-                                  
-                                  const handleSave = () => {
-                                    if (input.value !== activeContact.email) {
-                                      handleEditContactInline({ 
-                                        id: activeContact.id, 
-                                        email: input.value 
-                                      });
-                                    }
-                                    container.innerHTML = input.value || 'Non renseigné';
-                                  };
-                                  
-                                  input.addEventListener('blur', handleSave);
-                                  input.addEventListener('keydown', (e) => {
-                                    if (e.key === 'Enter') {
-                                      e.preventDefault();
-                                      handleSave();
-                                    } else if (e.key === 'Escape') {
-                                      e.preventDefault();
-                                      container.innerHTML = activeContact.email || 'Non renseigné';
-                                    }
-                                  });
-                                }}
-                              >
-                                {activeContact.email || "Non renseigné"}
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                        <div className="py-1 group relative">
-                          <div className="flex items-start space-x-3">
-                            <Phone className="h-5 w-5 text-muted-foreground mt-0.5 flex-shrink-0" />
-                            <div className="flex-1">
-                              <p className="text-xs font-medium text-muted-foreground">Téléphone Mobile</p>
-                              <div 
-                                className="font-medium min-h-[28px] flex items-center transition-colors duration-150 ease-in-out text-sm hover:bg-muted/30 rounded-md -m-px p-px cursor-text"
-                                onClick={(event) => {
-                                  const container = event.currentTarget as HTMLElement;
-                                  container.innerHTML = '';
-                                  
-                                  const input = document.createElement('input');
-                                  input.type = 'text';
-                                  input.value = activeContact.phoneNumber || '';
-                                  input.className = 'h-full py-1 px-2 text-sm border-muted focus:ring-1 focus:ring-ring focus:ring-offset-0 bg-background rounded-sm min-w-[50px] w-full';
-                                  input.style.width = '100%';
-                                  
-                                  container.appendChild(input);
-                                  
-                                  input.focus();
-                                  
-                                  const handleSave = () => {
-                                    if (input.value !== activeContact.phoneNumber) {
-                                      handleEditContactInline({ 
-                                        id: activeContact.id, 
-                                        phoneNumber: input.value 
-                                      });
-                                    }
-                                    container.innerHTML = input.value || 'Non renseigné';
-                                  };
-                                  
-                                  input.addEventListener('blur', handleSave);
-                                  input.addEventListener('keydown', (e) => {
-                                    if (e.key === 'Enter') {
-                                      e.preventDefault();
-                                      handleSave();
-                                    } else if (e.key === 'Escape') {
-                                      e.preventDefault();
-                                      container.innerHTML = activeContact.phoneNumber || 'Non renseigné';
-                                    }
-                                  });
-                                }}
-                              >
-                                {activeContact.phoneNumber || "Non renseigné"}
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </section>
-                    <Separator className="my-2" />
-                    <section>
-                      <h3 className="text-xs font-semibold text-primary mb-1.5">Statut &amp; Source</h3>
-                      <div className="space-y-1.5">
-                        <div className="py-1 group relative">
-                          <div className="flex items-start space-x-3">
-                            <Info className="h-5 w-5 text-muted-foreground mt-0.5 flex-shrink-0" />
-                            <div className="flex-1">
-                              <p className="text-xs font-medium text-muted-foreground">Statut</p>
-                              <div className="font-medium min-h-[28px] flex items-center">
-                                <StatusBadge 
-                                  currentStatus={activeContact.status as StatusType || ""}
-                                  onChangeStatus={(newStatus) => {
-                                    handleEditContactInline({ id: activeContact.id, status: newStatus });
-                                  }}
-                                />
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                        <div className="py-1 group relative">
-                          <div className="flex items-start space-x-3">
-                            <Waypoints className="h-5 w-5 text-muted-foreground mt-0.5 flex-shrink-0" />
-                            <div className="flex-1">
-                              <p className="text-xs font-medium text-muted-foreground">Source</p>
-                              <div 
-                                className="font-medium min-h-[28px] flex items-center transition-colors duration-150 ease-in-out text-sm italic text-muted-foreground/70 hover:bg-muted/30 rounded-md -m-px p-px cursor-text"
-                                onClick={(event) => {
-                                  const container = event.currentTarget as HTMLElement;
-                                  container.innerHTML = '';
-                                  
-                                  const input = document.createElement('input');
-                                  input.type = 'text';
-                                  input.value = activeContact.source || '';
-                                  input.className = 'h-full py-1 px-2 text-sm border-muted focus:ring-1 focus:ring-ring focus:ring-offset-0 bg-background rounded-sm min-w-[50px] w-full';
-                                  input.style.width = '100%';
-                                  
-                                  container.appendChild(input);
-                                  
-                                  input.focus();
-                                  
-                                  const handleSave = () => {
-                                    if (input.value !== activeContact.source) {
-                                      handleEditContactInline({ 
-                                        id: activeContact.id, 
-                                        source: input.value 
-                                      });
-                                    }
-                                    container.innerHTML = input.value || 'Source du contact';
-                                  };
-                                  
-                                  input.addEventListener('blur', handleSave);
-                                  input.addEventListener('keydown', (e) => {
-                                    if (e.key === 'Enter') {
-                                      e.preventDefault();
-                                      handleSave();
-                                    } else if (e.key === 'Escape') {
-                                      e.preventDefault();
-                                      container.innerHTML = activeContact.source || 'Source du contact';
-                                    }
-                                  });
-                                }}
-                              >
-                                {activeContact.source || "Source du contact"}
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </section>
-                  </div>
-                  <div className="space-y-3 mt-3 md:mt-0">
-                    <section>
-                      <h3 className="text-xs font-semibold text-primary mb-1.5">Dates Importantes</h3>
-                      <div className="space-y-1.5">
-                        <div className="py-1 group relative">
-                          <div className="flex items-start space-x-3">
-                            <PhoneOutgoing className="h-5 w-5 text-muted-foreground mt-0.5 flex-shrink-0" />
-                            <div className="flex-1">
-                              <p className="text-xs font-medium text-muted-foreground">Date du dernier appel</p>
-                              <Popover>
-                                <PopoverTrigger asChild>
-                                  <div className="font-medium min-h-[28px] flex items-center transition-colors duration-150 ease-in-out text-sm italic text-muted-foreground/70 hover:bg-muted/30 rounded-md -m-px p-px cursor-text">
-                                    {activeContact.dateAppel ? 
-                                      safeFormat(parseISO(activeContact.dateAppel), 'dd/MM/yyyy', { locale: fr }) || "Date invalide" : 
-                                      "Non renseigné"}
-                                  </div>
-                                </PopoverTrigger>
-                                <PopoverContent className="w-auto p-0">
-                                  <Calendar
-                                    mode="single"
-                                    selected={activeContact.dateAppel ? 
-                                      (() => {
-                                        try {
-                                          const parsedDate = parseISO(activeContact.dateAppel);
-                                          return isValid(parsedDate) ? parsedDate : undefined;
-                                        } catch {
-                                          return undefined;
-                                        }
-                                      })() : 
-                                      undefined}
-                                    onSelect={(date) => {
-                                      if (date && isValid(date)) {
-                                        handleEditContactInline({ 
-                                          id: activeContact.id, 
-                                          dateAppel: format(date, 'yyyy-MM-dd') 
-                                        });
-                                      }
-                                    }}
-                                    locale={fr}
-                                    captionLayout="dropdown"
-                                    fromYear={1900}
-                                    toYear={2100}
-                                  />
-                                </PopoverContent>
-                              </Popover>
-                            </div>
-                          </div>
-                        </div>
-                        <div className="py-1 group relative">
-                          <div className="flex items-start space-x-3">
-                            <Clock className="h-5 w-5 text-muted-foreground mt-0.5 flex-shrink-0" />
-                            <div className="flex-1">
-                              <p className="text-xs font-medium text-muted-foreground">Heure du dernier appel</p>
-                              <Popover>
-                                <PopoverTrigger asChild>
-                                  <div className="font-medium min-h-[28px] flex items-center transition-colors duration-150 ease-in-out text-sm italic text-muted-foreground/70 hover:bg-muted/30 rounded-md -m-px p-px cursor-text">
-                                    {activeContact.heureAppel || "HH:MM"}
-                                  </div>
-                                </PopoverTrigger>
-                                <PopoverContent className="w-auto p-0">
-                                  <TimePickerOnly
-                                    date={activeContact.heureAppel ? (() => {
-                                      try {
-                                        const [hours, minutes] = activeContact.heureAppel.split(':');
-                                        const hoursNum = parseInt(hours, 10);
-                                        const minutesNum = parseInt(minutes, 10);
-                                        
-                                        if (isNaN(hoursNum) || isNaN(minutesNum) || 
-                                            hoursNum < 0 || hoursNum > 23 || 
-                                            minutesNum < 0 || minutesNum > 59) {
-                                          console.warn("Heure invalide:", activeContact.heureAppel);
-                                          return new Date();
-                                        }
-                                        
-                                        const date = new Date();
-                                        date.setHours(hoursNum, minutesNum, 0, 0);
-                                        return date;
-                                      } catch (e) {
-                                        console.error("Erreur parsing heure:", e);
-                                        return new Date();
-                                      }
-                                    })() : new Date()}
-                                    onChange={(date) => {
-                                      if (date && isValid(date)) {
-                                        handleEditContactInline({ 
-                                          id: activeContact.id, 
-                                          heureAppel: format(date, 'HH:mm') 
-                                        });
-                                      }
-                                    }}
-                                    hourCycle={24}
-                                  />
-                                </PopoverContent>
-                              </Popover>
-                            </div>
-                          </div>
-                        </div>
-                        <div className="py-1 group relative">
-                          <div className="flex items-start space-x-3">
-                            <BellRing className="h-5 w-5 text-muted-foreground mt-0.5 flex-shrink-0" />
-                            <div className="flex-1">
-                              <p className="text-xs font-medium text-muted-foreground">Date de rappel programmée</p>
-                              <Popover>
-                                <PopoverTrigger asChild>
-                                  <div className="font-medium min-h-[28px] flex items-center transition-colors duration-150 ease-in-out text-sm hover:bg-muted/30 rounded-md -m-px p-px cursor-text">
-                                    {activeContact.dateRappel ? 
-                                      safeFormat(parseISO(activeContact.dateRappel), 'dd/MM/yyyy', { locale: fr }) || "Date invalide" : 
-                                      "Non renseigné"}
-                                  </div>
-                                </PopoverTrigger>
-                                <PopoverContent className="w-auto p-0">
-                                  <Calendar
-                                    mode="single"
-                                    selected={activeContact.dateRappel ? 
-                                      (() => {
-                                        try {
-                                          const parsedDate = parseISO(activeContact.dateRappel);
-                                          return isValid(parsedDate) ? parsedDate : undefined;
-                                        } catch {
-                                          return undefined;
-                                        }
-                                      })() : 
-                                      undefined}
-                                    onSelect={(date) => {
-                                      if (date && isValid(date)) {
-                                        handleEditContactInline({ 
-                                          id: activeContact.id, 
-                                          dateRappel: format(date, 'yyyy-MM-dd') 
-                                        });
-                                      }
-                                    }}
-                                    locale={fr}
-                                    captionLayout="dropdown"
-                                    fromYear={1900}
-                                    toYear={2100}
-                                  />
-                                </PopoverContent>
-                              </Popover>
-                            </div>
-                          </div>
-                        </div>
-                        <div className="py-1 group relative">
-                          <div className="flex items-start space-x-3">
-                            <Clock className="h-5 w-5 text-muted-foreground mt-0.5 flex-shrink-0" />
-                            <div className="flex-1">
-                              <p className="text-xs font-medium text-muted-foreground">Heure de rappel</p>
-                              <Popover>
-                                <PopoverTrigger asChild>
-                                  <div className="font-medium min-h-[28px] flex items-center transition-colors duration-150 ease-in-out text-sm italic text-muted-foreground/70 hover:bg-muted/30 rounded-md -m-px p-px cursor-text">
-                                    {activeContact.heureRappel || "HH:MM"}
-                                  </div>
-                                </PopoverTrigger>
-                                <PopoverContent className="w-auto p-0">
-                                  <TimePickerOnly
-                                    date={activeContact.heureRappel ? (() => {
-                                      try {
-                                        const [hours, minutes] = activeContact.heureRappel.split(':');
-                                        const hoursNum = parseInt(hours, 10);
-                                        const minutesNum = parseInt(minutes, 10);
-                                        
-                                        if (isNaN(hoursNum) || isNaN(minutesNum) || 
-                                            hoursNum < 0 || hoursNum > 23 || 
-                                            minutesNum < 0 || minutesNum > 59) {
-                                          console.warn("Heure invalide:", activeContact.heureRappel);
-                                          return new Date();
-                                        }
-                                        
-                                        const date = new Date();
-                                        date.setHours(hoursNum, minutesNum, 0, 0);
-                                        return date;
-                                      } catch (e) {
-                                        console.error("Erreur parsing heure:", e);
-                                        return new Date();
-                                      }
-                                    })() : new Date()}
-                                    onChange={(date) => {
-                                      if (date && isValid(date)) {
-                                        handleEditContactInline({ 
-                                          id: activeContact.id, 
-                                          heureRappel: format(date, 'HH:mm') 
-                                        });
-                                      }
-                                    }}
-                                    hourCycle={24}
-                                  />
-                                </PopoverContent>
-                              </Popover>
-                            </div>
-                          </div>
-                        </div>
-                        <div className="py-1 group relative">
-                          <div className="flex items-start space-x-3">
-                            <CalendarDays className="h-5 w-5 text-muted-foreground mt-0.5 flex-shrink-0" />
-                            <div className="flex-1">
-                              <p className="text-xs font-medium text-muted-foreground">Date de rendez-vous</p>
-                              <Popover>
-                                <PopoverTrigger asChild>
-                                  <div className="font-medium min-h-[28px] flex items-center transition-colors duration-150 ease-in-out text-sm italic text-muted-foreground/70 hover:bg-muted/30 rounded-md -m-px p-px cursor-text">
-                                    {activeContact.dateRendezVous ? 
-                                      safeFormat(parseISO(activeContact.dateRendezVous), 'dd/MM/yyyy', { locale: fr }) || "Date invalide" : 
-                                      "Non renseigné"}
-                                  </div>
-                                </PopoverTrigger>
-                                <PopoverContent className="w-auto p-0">
-                                  <Calendar
-                                    mode="single"
-                                    selected={activeContact.dateRendezVous ? 
-                                      (() => {
-                                        try {
-                                          const parsedDate = parseISO(activeContact.dateRendezVous);
-                                          return isValid(parsedDate) ? parsedDate : undefined;
-                                        } catch {
-                                          return undefined;
-                                        }
-                                      })() : 
-                                      undefined}
-                                    onSelect={(date) => {
-                                      if (date && isValid(date)) {
-                                        handleEditContactInline({ 
-                                          id: activeContact.id, 
-                                          dateRendezVous: format(date, 'yyyy-MM-dd') 
-                                        });
-                                      }
-                                    }}
-                                    locale={fr}
-                                    captionLayout="dropdown"
-                                    fromYear={1900}
-                                    toYear={2100}
-                                  />
-                                </PopoverContent>
-                              </Popover>
-                            </div>
-                          </div>
-                        </div>
-                        <div className="py-1 group relative">
-                          <div className="flex items-start space-x-3">
-                            <Clock className="h-5 w-5 text-muted-foreground mt-0.5 flex-shrink-0" />
-                            <div className="flex-1">
-                              <p className="text-xs font-medium text-muted-foreground">Heure de rendez-vous</p>
-                              <Popover>
-                                <PopoverTrigger asChild>
-                                  <div className="font-medium min-h-[28px] flex items-center transition-colors duration-150 ease-in-out text-sm italic text-muted-foreground/70 hover:bg-muted/30 rounded-md -m-px p-px cursor-text">
-                                    {activeContact.heureRendezVous || "HH:MM"}
-                                  </div>
-                                </PopoverTrigger>
-                                <PopoverContent className="w-auto p-0">
-                                  <TimePickerOnly
-                                    date={activeContact.heureRendezVous ? (() => {
-                                      try {
-                                        const [hours, minutes] = activeContact.heureRendezVous.split(':');
-                                        const hoursNum = parseInt(hours, 10);
-                                        const minutesNum = parseInt(minutes, 10);
-                                        
-                                        if (isNaN(hoursNum) || isNaN(minutesNum) || 
-                                            hoursNum < 0 || hoursNum > 23 || 
-                                            minutesNum < 0 || minutesNum > 59) {
-                                          console.warn("Heure invalide:", activeContact.heureRendezVous);
-                                          return new Date();
-                                        }
-                                        
-                                        const date = new Date();
-                                        date.setHours(hoursNum, minutesNum, 0, 0);
-                                        return date;
-                                      } catch (e) {
-                                        console.error("Erreur parsing heure:", e);
-                                        return new Date();
-                                      }
-                                    })() : new Date()}
-                                    onChange={(date) => {
-                                      if (date && isValid(date)) {
-                                        handleEditContactInline({ 
-                                          id: activeContact.id, 
-                                          heureRendezVous: format(date, 'HH:mm') 
-                                        });
-                                      }
-                                    }}
-                                    hourCycle={24}
-                                  />
-                                </PopoverContent>
-                              </Popover>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </section>
-                  </div>
-                </div>
-                <Separator className="my-2" />
-                <section className="md:col-span-2">
-                  <div className="flex justify-between items-center mb-1.5">
-                    <h3 className="text-xs font-semibold text-primary">Commentaire</h3>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        const commentContainer = event.currentTarget.closest('section')?.querySelector('[role="button"]') as HTMLElement;
-                        if (commentContainer) {
-                          commentContainer.click();
-                        }
-                      }}
-                    >
-                      <Edit3 className="h-4 w-4 text-muted-foreground hover:text-primary" />
-                    </Button>
-                  </div>
-                  <div 
-                    className="text-sm whitespace-pre-wrap min-h-[60px] p-3 rounded-md border border-dashed border-transparent hover:border-muted hover:bg-muted/50 cursor-pointer transition-colors italic text-muted-foreground" 
-                    role="button" 
-                    tabIndex={0}
-                    onClick={(event) => {
-                      const container = event.currentTarget;
-                      const oldContent = container.innerHTML;
-                      container.innerHTML = '';
-                      
-                      const textarea = document.createElement('textarea');
-                      textarea.value = activeContact.comment || '';
-                      textarea.className = 'w-full min-h-[60px] h-full p-3 text-sm border-muted focus:ring-1 focus:ring-ring focus:ring-offset-0 bg-background rounded-md';
-                      textarea.style.resize = 'vertical';
-                      
-                      container.appendChild(textarea);
-                      
-                      textarea.focus();
-                      
-                      const handleSave = () => {
-                        if (textarea.value !== activeContact.comment) {
-                          handleEditContactInline({ 
-                            id: activeContact.id, 
-                            comment: textarea.value 
-                          });
-                        }
-                        container.innerHTML = textarea.value || "Aucun commentaire. Cliquez ou appuyez sur Entrée pour ajouter.";
-                      };
-                      
-                      textarea.addEventListener('blur', handleSave);
-                      textarea.addEventListener('keydown', (e) => {
-                        if (e.key === 'Escape') {
-                          e.preventDefault();
-                          container.innerHTML = oldContent;
-                        }
-                      });
-                    }}
-                  >
-                    {activeContact.comment || "Aucun commentaire. Cliquez ou appuyez sur Entrée pour ajouter."}
-                  </div>
-                </section>
+                      {/* UploadDropZone est toujours rendu, positionné absolument pour recouvrir si nécessaire */}
+                      {/* Le composant interne gère son style en fonction de l'état de drag */}
+                      {/* Appliquer des styles pour le positionner en overlay */}
+                      {/* La visibilité en mode overlay est maintenant contrôlée par isDragOverTable */}
+                      <UploadDropZone
+                        onFileSelected={handleFileSelectedForDropZone}
+                        className={cn(
+                          // Applique le positionnement absolu uniquement si des contacts sont présents
+                          filteredContacts.length > 0 ? "absolute inset-0 z-10" : "p-4",
+                          // Contrôle la visibilité de l'overlay basé sur isDragOverTable si des contacts sont présents
+                          filteredContacts.length > 0 && !isDragOverTable ? "opacity-0 pointer-events-none" : "",
+                          // Ajoutez ici d'autres classes spécifiques si nécessaire, par exemple pour le fond en mode vide
+                        )}
+                    />
+                    </>
+                  )}
               </div>
             </div>
-          ) : null /* Temporairement mis à null */
-          )}
-        </aside>
-      </div>
+
+            <footer className="shrink-0 mt-auto pt-4 pb-2 text-xs text-muted-foreground flex items-center justify-between">
+              <div>
+                {autosaveFileHandle && <span className="text-green-600">(Autosave activé)</span>}
+                {isAutosaveSaving && <span className="ml-2"><Loader2 className="h-3 w-3 animate-spin inline-block" /> Sauvegarde auto...</span>}
+              </div>
+              <div className="font-medium text-center mx-auto">
+                <span className="text-sm">{filteredContacts.length} contact{filteredContacts.length === 1 ? '' : 's'}</span>
+              </div>
+              <div>
+                <AdbStatusBadge />
+              </div>
+            </footer>
+          </main>
+        </div>
+      </DndProvider>
 
       {isExportFormatDialogOpen && (
         <AlertDialog open={isExportFormatDialogOpen} onOpenChange={setIsExportFormatDialogOpen}>
@@ -1628,20 +1142,20 @@ export default function ContactsPage() {
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter className="flex flex-col sm:flex-row gap-2 justify-end">
-              <Button 
+              <Button
                 onClick={() => exportToXLSX(filteredContacts)}
                 className="w-full sm:w-auto"
               >
                 Exporter en XLSX (Excel)
               </Button>
-              <Button 
+              <Button
                 onClick={() => exportToCSV(filteredContacts)}
                 className="w-full sm:w-auto"
                 variant="outline"
               >
                 Exporter en CSV
               </Button>
-              <AlertDialogCancel 
+              <AlertDialogCancel
                 onClick={() => setIsExportFormatDialogOpen(false)}
                 className="w-full sm:w-auto mt-2 sm:mt-0"
               >
@@ -1675,14 +1189,46 @@ export default function ContactsPage() {
         </AlertDialog>
       )}
 
+      {isFileDropConfirmOpen && (
+        <AlertDialog open={isFileDropConfirmOpen} onOpenChange={setIsFileDropConfirmOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Importer de nouveaux contacts ?</AlertDialogTitle>
+              <AlertDialogDescription>
+                L&apos;importation d&apos;un nouveau fichier remplacera toutes les données de contacts actuellement affichées.
+                Voulez-vous continuer et effacer les contacts existants ?
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel onClick={() => {
+                setIsFileDropConfirmOpen(false);
+                setDroppedFile(null);
+              }}>Annuler</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={() => {
+                  setIsFileDropConfirmOpen(false);
+                  if (droppedFile) {
+                    processFileForImport(droppedFile);
+                    setDroppedFile(null);
+                  }
+                }}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
+                Effacer et importer
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      )}
+
       {contactInCallId && (
         <div className="fixed bottom-8 right-8 z-50">
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button 
-                  variant="destructive" 
-                  size="lg" 
+                <Button
+                  variant="destructive"
+                  size="lg"
                   className="rounded-full h-16 w-16 shadow-lg flex items-center justify-center animate-pulse"
                   onClick={() => {
                     if (activeContact && activeContact.id === contactInCallId) {

@@ -49,6 +49,7 @@ import {
 } from 'lucide-react';
 import { cn, formatPhoneNumber } from '@/lib/utils';
 import { DraggableTableHead } from "@/components/ui/DraggableTableHead"; // Ajouté
+import UploadDropZone from './UploadDropZone'; // Nouvel import
 
 // Définir les props pour ContactTable
 interface ContactTableProps {
@@ -64,6 +65,10 @@ interface ContactTableProps {
   isProcessingId?: string | null; // AJOUT: Pour identifier la ligne en cours de traitement
   error?: string | null; // AJOUT: Pour afficher une erreur globale liée à la table/aux actions
   // isPanelOpen?: boolean; // SUPPRIMÉ: Prop non utilisée
+  processFileForImport?: (file: File) => void; // Nouvelle prop pour gérer l'import de fichiers
+  columns?: { id: string; label: string }[]; // Ajout: Définition des colonnes disponibles
+  visibleColumns?: string[]; // Ajout: Colonnes actuellement visibles
+  setVisibleColumns?: React.Dispatch<React.SetStateAction<string[]>>; // Ajout: Fonction pour modifier les colonnes visibles
 }
 
 // Définir le type pour les métadonnées de la table pour les actions
@@ -104,7 +109,10 @@ export const ContactTable = React.memo(function ContactTableComponent({
   onActiveContactChange, 
   scrollContainerRef, 
   isProcessingId, 
-  error 
+  error,
+  processFileForImport,
+  visibleColumns,
+  setVisibleColumns
 }: ContactTableProps) {
   const [columnPinning, setColumnPinning] = React.useState<ColumnPinningState>({});
   const [activeRowId, setActiveRowId] = React.useState<string | null>(null);
@@ -356,11 +364,29 @@ export const ContactTable = React.memo(function ContactTableComponent({
     getCoreRowModel: getCoreRowModel(),
     columnResizeMode: 'onChange', 
     state: {
+      columnVisibility: visibleColumns ? 
+        // Remplacer l'implémentation actuelle pour la visibilité des colonnes
+        // L'état devrait être un objet où les clés sont les ID des colonnes et les valeurs sont des booléens
+        // Générer un objet avec TOUTES les colonnes d'abord, puis mettre à true seulement celles dans visibleColumns
+        columns.reduce((acc, column) => {
+          acc[column.id!] = visibleColumns.includes(column.id!);
+          return acc;
+        }, {} as Record<string, boolean>) 
+        : {},
       columnPinning,
-      columnOrder, // AJOUT: Passer columnOrder à l'état de la table
+      columnOrder,
     },
-    onColumnOrderChange: setColumnOrder, // AJOUT: Gérer les changements d'ordre
+    onColumnOrderChange: setColumnOrder,
     onColumnPinningChange: setColumnPinning,
+    onColumnVisibilityChange: (updater) => {
+      if (setVisibleColumns) {
+        const nextVisibility = typeof updater === 'function' ? updater(table.getState().columnVisibility) : updater;
+        const currentlyVisible = Object.entries(nextVisibility)
+          .filter(([, isVisible]) => isVisible)
+          .map(([columnId]) => columnId);
+        setVisibleColumns(currentlyVisible);
+      }
+    },
     getRowId: (originalRow) => originalRow.id,
     meta: {
       onEditContact,
@@ -390,6 +416,16 @@ export const ContactTable = React.memo(function ContactTableComponent({
 
   // Log après initialisation
   console.log(`[ContactTable] Virtualizer instance. virtualItems.length: ${rowVirtualizer.getVirtualItems().length}, getTotalSize: ${rowVirtualizer.getTotalSize()}, enabled: ${isScrollContainerReady && !!scrollContainerRef?.current}`);
+
+  // Ajouter un gestionnaire pour UploadDropZone
+  const handleFileSelected = React.useCallback((file: File) => {
+    console.log('[ContactTable] Fichier sélectionné via UploadDropZone:', file);
+    if (processFileForImport) {
+      processFileForImport(file);
+    } else {
+      console.warn('[ContactTable] processFileForImport non défini, impossible de traiter le fichier.');
+    }
+  }, [processFileForImport]);
 
   // Si les données sont là mais le conteneur de défilement n'est pas encore prêt
   if (data.length > 0 && !isScrollContainerReady) {
@@ -534,7 +570,9 @@ export const ContactTable = React.memo(function ContactTableComponent({
         </Table>
       </div>
       {data.length === 0 && (
-         <div className="text-center p-4">Aucun contact.</div>
+        <div className="p-4">
+          <UploadDropZone onFileSelected={handleFileSelected} />
+        </div>
       )}
     </div>
   );
