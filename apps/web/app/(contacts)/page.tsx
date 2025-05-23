@@ -635,6 +635,11 @@ export default function ContactsPage() {
       toast.warn("Aucun contact à exporter." );
       return;
     }
+    // Générer le timestamp pour le nom du fichier
+    const now = new Date();
+    const timestamp = format(now, 'yyyy_MM_dd_HH_mm_ss');
+    const filename = `DimiCall_${timestamp}.xlsx`;
+
     const worksheet = XLSX.utils.json_to_sheet(contactsToExport.map(c => ({
       ID: c.id,
       Prénom: c.firstName,
@@ -655,7 +660,7 @@ export default function ContactsPage() {
     XLSX.utils.book_append_sheet(workbook, worksheet, "Contacts");
     const excelBuffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
     const data = new Blob([excelBuffer], {type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;charset=UTF-T-8"});
-    saveAs(data, "contacts.xlsx");
+    saveAs(data, filename);
     toast.success("Contacts exportés en XLSX !" );
     setIsExportFormatDialogOpen(false);
   };
@@ -665,6 +670,11 @@ export default function ContactsPage() {
       toast.warn("Aucun contact à exporter." );
       return;
     }
+    // Générer le timestamp pour le nom du fichier
+    const now = new Date();
+    const timestamp = format(now, 'yyyy_MM_dd_HH_mm_ss');
+    const filename = `DimiCall_${timestamp}.csv`;
+
     const csvData = contactsToExport.map(c => ({
       ID: c.id,
       Prénom: c.firstName,
@@ -684,7 +694,7 @@ export default function ContactsPage() {
     const worksheet = XLSX.utils.json_to_sheet(csvData);
     const csvString = XLSX.utils.sheet_to_csv(worksheet);
     const data = new Blob(["\uFEFF" + csvString], {type: "text/csv;charset=utf-8;"});
-    saveAs(data, "contacts.csv");
+    saveAs(data, filename);
     toast.success("Contacts exportés en CSV !" );
     setIsExportFormatDialogOpen(false);
   };
