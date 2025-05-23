@@ -45,6 +45,11 @@ export const EditableCell: React.FC<EditableCellProps> = React.memo(({
 
   const cellType = (column.columnDef.meta as { cellType?: string })?.cellType || 'text';
 
+  // Effet pour synchroniser les valeurs lorsque les données externes changent
+  useEffect(() => {
+    setCurrentValue(initialValue);
+  }, [initialValue]);
+
   // Fonction pour auto-formater la date JJ/MM/AAAA
   const autoFormatDateInput = (value: string): string => {
     let cleanValue = value.replace(/[^\d]/g, ''); // Garder uniquement les chiffres
@@ -156,6 +161,8 @@ export const EditableCell: React.FC<EditableCellProps> = React.memo(({
 
     if (finalValue !== initialValue) {
       console.log(`[EditableCell] Attempting to save. Column ID: ${column.id}, Original Value: ${initialValue}, New Value (finalValue): ${finalValue}`);
+      // Mettre à jour la valeur locale avant d'envoyer au serveur pour une UI réactive
+      setCurrentValue(finalValue);
       onEditContact({
         id: row.original.id,
         [column.id]: finalValue,
@@ -182,7 +189,8 @@ export const EditableCell: React.FC<EditableCellProps> = React.memo(({
     handleSave(null);
   };
   
-  const handleCellClick = () => {
+  const handleCellClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
     if (cellType === 'text' || cellType === 'date' || cellType === 'time' || cellType === 'datetime') { // Étendre aux types date/time
         setIsEditingText(true);
     }
@@ -220,16 +228,26 @@ export const EditableCell: React.FC<EditableCellProps> = React.memo(({
   } else if (currentValue) {
     if (cellType === 'date') {
       try {
-        const parsed = parseISO(currentValue as string); // La DB stocke YYYY-MM-DD ou ISO
+        // Tenter d'abord de parser comme ISO (YYYY-MM-DD)
+        let parsed = parseISO(currentValue as string);
+
+        if (!isValidDate(parsed)) {
+          // Si ISO échoue, tenter de parser comme JJ/MM/AAAA
+          parsed = parseDateFns(currentValue as string, 'dd/MM/yyyy', new Date());
+        }
+
         displayContent = isValidDate(parsed) ? formatDateFns(parsed, 'dd/MM/yyyy', { locale: fr }) : <span className="text-destructive italic">{`Inv: ${currentValue}`}</span>;
       } catch {
         displayContent = <span className="text-destructive italic">{`Err: ${currentValue}`}</span>;
       }
     } else if (cellType === 'time') {
+       // Tenter de valider HH:MM ou HH:MM:SS
        if (isValidTimeFormat(currentValue as string)) {
-           displayContent = currentValue;
+           displayContent = currentValue; // Déjà en HH:MM
+       } else if (/^([01]\d|2[0-3]):([0-5]\d):([0-5]\d)$/.test(currentValue as string)) {
+            displayContent = (currentValue as string).substring(0, 5); // HH:MM à partir de HH:MM:SS
        } else {
-            // Tenter de parser comme une date ISO et extraire l'heure
+            // Tenter de parser comme une date ISO et extraire l'heure (fallback)
             try {
                 const parsed = parseISO(currentValue as string);
                 if(isValidDate(parsed)){

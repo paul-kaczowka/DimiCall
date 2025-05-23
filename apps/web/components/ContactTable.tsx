@@ -62,7 +62,8 @@ interface ContactTableProps {
   // onScrollChange?: (percentage: number, isScrollable: boolean) => void; // Supprimé
   // scrollContainerRef?: React.RefObject<HTMLDivElement | null>; // Supprimé
   // onDeleteContact: (contactId: string) => void; // Supprimé
-  isProcessingId?: string | null; // AJOUT: Pour identifier la ligne en cours de traitement
+  contactInCallId?: string | null; // Nouvelle prop pour l'ID du contact en appel
+  // callStartTime?: string | null; // PROP SUPPRIMÉE CAR NON UTILISÉE
   error?: string | null; // AJOUT: Pour afficher une erreur globale liée à la table/aux actions
   // isPanelOpen?: boolean; // SUPPRIMÉ: Prop non utilisée
   processFileForImport?: (file: File) => void; // Nouvelle prop pour gérer l'import de fichiers
@@ -108,7 +109,7 @@ export const ContactTable = React.memo(function ContactTableComponent({
   onEditContact, 
   onActiveContactChange, 
   scrollContainerRef, 
-  isProcessingId, 
+  contactInCallId,
   error,
   processFileForImport,
   visibleColumns,
@@ -119,6 +120,7 @@ export const ContactTable = React.memo(function ContactTableComponent({
   const [isScrollContainerReady, setIsScrollContainerReady] = React.useState(false);
 
   // AJOUT: État pour l'ordre des colonnes
+  // Initialiser l'état avec un tableau vide au départ
   const [columnOrder, setColumnOrder] = React.useState<string[]>([]);
 
   // Optimiser la fonction de clic sur une ligne - POSITIONNER AVANT D'AUTRES HOOKS
@@ -138,6 +140,7 @@ export const ContactTable = React.memo(function ContactTableComponent({
 
   // Effet pour notifier le parent du changement de la ligne active - RÉAJOUTÉ
   React.useEffect(() => {
+    // DÉCOMMENTÉ: Logique pour notifier le parent du contact actif
     if (onActiveContactChange && activeRowId) {
       const activeContact = data.find(contact => contact.id === activeRowId);
       onActiveContactChange(activeContact || null);
@@ -146,7 +149,7 @@ export const ContactTable = React.memo(function ContactTableComponent({
     }
   }, [activeRowId, data, onActiveContactChange]);
 
-  const internalTableWrapperRef = React.useRef<HTMLDivElement>(null); // Renommé pour éviter confusion, c'est le ref du composant Table de ui/table
+  const internalTableWrapperRef = React.useRef<HTMLDivElement>(null); // Renommé pour éviter confusion
 
   // Réduire la fréquence des rendus en vérifiant l'état du container une seule fois
   React.useEffect(() => {
@@ -354,9 +357,12 @@ export const ContactTable = React.memo(function ContactTableComponent({
   ], []);
 
   // AJOUT: Initialiser columnOrder basé sur les colonnes initiales
+  // Réactiver et ajuster le useEffect pour initialiser columnOrder après que `columns` soit défini
   React.useEffect(() => {
-    setColumnOrder(columns.map(c => c.id!)); // Utiliser l'id de ColumnDef
-  }, [columns]);
+    if (columns && columns.length > 0) {
+      setColumnOrder(columns.map(c => c.id!));
+    }
+  }, [columns]); // Dépendance à columns
 
   const table = useReactTable<Contact>({
     data,
@@ -392,6 +398,9 @@ export const ContactTable = React.memo(function ContactTableComponent({
       onEditContact,
     } as TableMeta
   });
+
+  // AJOUTER CE LOG
+  console.log('[ContactTable] Initial table state columnVisibility:', table.getState().columnVisibility);
 
   // AJOUT: Fonction pour déplacer les colonnes
   const moveColumn = (dragIndex: number, hoverIndex: number) => {
@@ -535,7 +544,7 @@ export const ContactTable = React.memo(function ContactTableComponent({
                     callEnded && !isSelected && "bg-emerald-600 text-white hover:bg-emerald-600/90", // Ligne verte si appel terminé
                     callEnded && isSelected && "bg-emerald-700 text-white border-emerald-800 hover:bg-emerald-700/90", // Ligne verte plus foncée si appel terminé et sélectionné
                     row.id === activeRowId ? "bg-muted" : "",
-                    isProcessingId && isProcessingId === row.original.id ? "opacity-50 pointer-events-none" : "" // Griser si en cours de traitement
+                    contactInCallId && contactInCallId === row.original.id ? "opacity-50 pointer-events-none" : "" // Griser si en cours de traitement
                   )}
                   style={{
                     height: `${virtualRow.size}px`, // Hauteur dynamique de la ligne virtuelle

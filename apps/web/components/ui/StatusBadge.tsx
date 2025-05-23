@@ -81,22 +81,32 @@ const getStatusColorClasses = (status: Status): string => {
 */
 
 export function StatusBadge({ currentStatus, onChangeStatus, className, isSmallBadge, readOnly }: StatusBadgeProps) {
+  // État local pour suivre le statut actuel
+  const [status, setStatus] = React.useState<Status>(currentStatus);
+
+  // Synchroniser l'état local avec les props externes
+  React.useEffect(() => {
+    setStatus(currentStatus);
+  }, [currentStatus]);
+
   const handleStatusChange = (newStatus: Status) => {
     if (onChangeStatus) {
-    onChangeStatus(newStatus);
+      // Mettre à jour l'état local avant d'envoyer au parent pour une UI réactive
+      setStatus(newStatus);
+      onChangeStatus(newStatus);
     }
   };
 
   const badgeContent = (
     <Badge 
       className={cn(
-        getStatusColorClasses(currentStatus),
+        getStatusColorClasses(status), // Utiliser l'état local pour la couleur
         isSmallBadge ? "text-xs px-1.5 py-0.5" : "text-sm px-2.5 py-1", // Ajuster padding/text size
         !readOnly && "cursor-pointer hover:opacity-100 transition-opacity",
         className
       )}
     >
-      {currentStatus}
+      {status} {/* Utiliser l'état local pour le texte */}
     </Badge>
   );
 
@@ -117,7 +127,7 @@ export function StatusBadge({ currentStatus, onChangeStatus, className, isSmallB
             className={cn(
               "cursor-pointer"
               // Si vous voulez mettre en évidence l'option actuellement sélectionnée dans le menu déroulant :
-              // currentStatus === statusOption && "bg-accent font-semibold" 
+              // status === statusOption && "bg-accent font-semibold" 
             )}
           >
             {statusOption}

@@ -1018,8 +1018,10 @@ def format_duration(seconds):
 @app.post("/adb/hangup", summary="Terminer un appel téléphonique via ADB")
 async def adb_hangup_call(request_body: Optional[HangUpRequest] = Body(None)): # request_body peut être None
     contact_id_info = ""
+    contact_id = None
     if request_body and request_body.contact_id:
-        contact_id_info = f" (Info contact ID: {request_body.contact_id})"
+        contact_id = request_body.contact_id
+        contact_id_info = f" (Info contact ID: {contact_id})"
     
     print(f"[API POST /adb/hangup] Requête pour raccrocher l'appel{contact_id_info}.")
     # Obtenir l'heure de fin d'appel UTC effective AVANT d'envoyer la commande ADB, au cas où la commande prend du temps
@@ -1057,13 +1059,84 @@ async def adb_hangup_call(request_body: Optional[HangUpRequest] = Body(None)): #
         
         # Après que la commande de raccrochage ADB a été envoyée (et supposée réussie par run_adb_command)
         message = f"Commande de raccrochage envoyée avec succès{contact_id_info}."
+        
+        # AJOUT: Si nous avons un ID de contact, mettre à jour les informations d'appel
+        updated_contact = None
+        if contact_id:
+            try:
+                # Récupérer le contact par ID
+                contact = find_contact_by_id(contact_id)
+                if contact:
+                    # Convertir l'heure de fin d'appel au fuseau de Paris pour l'affichage
+                    hang_up_time_paris = effective_hang_up_time_utc.astimezone(PARIS_TZ)
+                    
+                    # Formater la date et l'heure pour l'affichage (dd/mm/yyyy et HH:MM:SS)
+                    dateAppel = hang_up_time_paris.strftime("%d/%m/%Y")
+                    heureAppel = hang_up_time_paris.strftime("%H:%M:%S")
+                    
+                    # Calculer la durée de l'appel si nous avons une heure de début
+                    dureeAppel = None
+                    if contact.get('callStartTime'):
+                        try:
+                            # Convertir callStartTime en datetime pour calculer la durée
+                            call_start_time_utc = datetime.fromisoformat(contact['callStartTime'].replace('Z', '+00:00'))
+                            
+                            # Calculer la durée en secondes
+                            duration_seconds = (effective_hang_up_time_utc - call_start_time_utc).total_seconds()
+                            
+                            # Formater la durée en MM:SS
+                            dureeAppel = format_duration(int(duration_seconds))
+                            
+                            print(f"[API DEBUG /adb/hangup] Durée calculée: {dureeAppel} pour l'appel du contact {contact_id}")
+                        except Exception as e:
+                            print(f"[API DEBUG /adb/hangup] Erreur lors du calcul de la durée: {str(e)}")
+                    
+                    # Créer l'objet de mise à jour du contact
+                    contact_update = ContactUpdate(
+                        dateAppel=dateAppel,
+                        heureAppel=heureAppel,
+                        dureeAppel=dureeAppel
+                    )
+                    
+                    # Mettre à jour le contact dans le stockage
+                    contacts = load_contacts_from_storage()
+                    for c in contacts:
+                        if c["id"] == contact_id:
+                            # Mise à jour des champs spécifiés dans contact_update
+                            if contact_update.dateAppel is not None:
+                                c["dateAppel"] = contact_update.dateAppel
+                            if contact_update.heureAppel is not None:
+                                c["heureAppel"] = contact_update.heureAppel
+                            if contact_update.dureeAppel is not None:
+                                c["dureeAppel"] = contact_update.dureeAppel
+                            updated_contact = c
+                            break
+                    
+                    if updated_contact:
+                        # Sauvegarder les modifications
+                        save_contacts_to_storage(contacts)
+                        print(f"[API DEBUG /adb/hangup] Contact {contact_id} mis à jour avec succès")
+                        message = f"Appel terminé et durée enregistrée pour le contact {contact_id}"
+                    else:
+                        print(f"[API DEBUG /adb/hangup] Contact {contact_id} non trouvé dans le stockage après récupération")
+                else:
+                    print(f"[API DEBUG /adb/hangup] Contact {contact_id} non trouvé")
+            except Exception as e:
+                print(f"[API DEBUG /adb/hangup] Erreur lors de la mise à jour du contact {contact_id}: {str(e)}")
+        
         print(f"[API POST /adb/hangup] {message}")
         
-        return {
+        response_data = {
             "message": message, 
             "status": "success",
             "hang_up_time_utc": effective_hang_up_time_utc.isoformat() # Renvoyer l'heure de fin
         }
+        
+        # Ajouter le contact mis à jour à la réponse s'il existe
+        if updated_contact:
+            response_data["contact"] = updated_contact
+        
+        return response_data
     except HTTPException as e:
         # Rediffuser l'exception HTTP si elle vient de run_adb_command
         # ou la transformer si nécessaire

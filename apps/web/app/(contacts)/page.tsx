@@ -21,12 +21,8 @@ import {
   Waypoints,
   BellRing,
   CalendarDays,
-  Edit3,
-  Clock,
-  PhoneOutgoing,
   PhoneOff
 } from 'lucide-react';
-import { Separator } from "@/components/ui/separator";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -43,10 +39,6 @@ import type { Contact as ContactSchemaType } from '@/lib/schemas/contact';
 import { type StatusMapping } from '@/components/ui/FunctionKeyStatusMappingGuide';
 import * as XLSX from 'xlsx';
 import { saveAs } from 'file-saver';
-import { StatusBadge, type Status as StatusType } from '@/components/ui/StatusBadge';
-import { Calendar } from '@/components/ui/calendar';
-import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
-import { TimePickerOnly } from '@/components/ui/TimePickerOnly';
 import { AdbStatusBadge } from '@/components/ui/AdbStatusBadge';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { DndProvider } from 'react-dnd';
@@ -119,7 +111,6 @@ export default function ContactsPage() {
   // isDragOver n'est plus utilisé au niveau de la page car DropZone gère son propre état de glissement
   // const [isDragOver, setIsDragOver] = useState(false);
   const [activeContact, setActiveContactState] = useState<ContactAppType | null>(null);
-  const [isPanelOpen, setIsPanelOpen] = useState(false);
   const [contactInCallId, setContactInCallId] = useState<string | null>(null);
   const [isExportFormatDialogOpen, setIsExportFormatDialogOpen] = useState(false);
   const [isPollingActive, setIsPollingActive] = useState(false);
@@ -215,16 +206,11 @@ export default function ContactsPage() {
 
   const inputFileRef = useRef<HTMLInputElement>(null);
   const ribbonRef = useRef<HTMLDivElement>(null);
-  const panelRef = useRef<HTMLDivElement>(null);
   const tableViewportRef = useRef<HTMLDivElement>(null);
   const mainPageRef = useRef<HTMLDivElement>(null);
 
   const setActiveContact = (contact: ContactAppType | null) => {
     setActiveContactState(contact);
-  };
-
-  const togglePanel = () => {
-    setIsPanelOpen(prev => !prev);
   };
 
   const fetchAndSetContacts = useCallback(async () => {
@@ -362,8 +348,9 @@ export default function ContactsPage() {
   // Déplacer les effets qui utilisent isAutosaveActive ici, après sa déclaration
   useEffect(() => {
     if (updateContactState.message) {
-      if (updateContactState.success && updateContactState.data) {
+      if (updateContactState.success && updateContactState.data) { // Condition stricte maintenue
         toast.success(updateContactState.message);
+        
         const updatedContact = updateContactState.data as ContactAppType;
         setContacts(prevContacts =>
           prevContacts.map(c => c.id === updatedContact.id ? updatedContact : c)
@@ -371,17 +358,21 @@ export default function ContactsPage() {
         if (activeContact && activeContact.id === updatedContact.id) {
           setActiveContactState(updatedContact);
         }
-
+        
+        // Rétablir fetchAndSetContacts() UNIQUEMENT après une sauvegarde réussie avec des données retournées
+        fetchAndSetContacts(); 
+        
         // Déclencher l'autosauvegarde après mise à jour
         if (isAutosaveActive) {
           triggerSave(undefined, false, false);
         }
-      } else {
+      } else if (!updateContactState.success) { // Gérer explicitement les erreurs
         toast.error(updateContactState.message || "Erreur lors de la mise à jour du contact.");
       }
+      // Si success est true mais data est null, cela peut être un cas où aucune donnée n'a été modifiée.
+      // Dans ce cas, on ne rafraîchit pas forcément depuis le serveur pour éviter le clignotement.
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [updateContactState, isAutosaveActive]);
+  }, [updateContactState, isAutosaveActive, fetchAndSetContacts, activeContact]); // Rétablir fetchAndSetContacts dans les dépendances
 
   useEffect(() => {
     if (callState.message) {
@@ -858,43 +849,57 @@ export default function ContactsPage() {
         console.log(`[CallStatusPolling] Appel terminé détecté pour le contact ID: ${contactInCallId}` );
 
         try {
-          // Appeler directement l'API hangup pour calculer la durée d'appel
-          const hangupResponse = await fetch('/api/hangup', {
+          // Appeler directement l'API de raccrochage correcte : /adb/hangup au lieu de /api/hangup
+          const hangupResponse = await fetch('http://localhost:8000/adb/hangup', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
             },
+            // S'assurer que l'ID du contact est inclus dans le corps de la requête
             body: JSON.stringify({ contact_id: contactInCallId })
           });
 
           if (!hangupResponse.ok) {
-            console.error(`[CallStatusPolling] Erreur lors de l'appel à /api/hangup: ${hangupResponse.status}` );
+            console.error(`[CallStatusPolling] Erreur lors de l'appel à /adb/hangup: ${hangupResponse.status}` );
             // Fallback: on utilise la méthode traditionnelle avec le formulaire
             const formData = new FormData();
             formData.append('contactId', contactInCallId);
             hangUpFormAction(formData);
           } else {
-            console.log(`[CallStatusPolling] Appel à /api/hangup réussi, l'appel est maintenant terminé` );
+            console.log(`[CallStatusPolling] Appel à /adb/hangup réussi, l'appel est maintenant terminé` );
 
-            // Récupérer les nouvelles données du contact pour rafraîchir l'interface
-            const contactResponse = await fetch(`/api/contacts/${contactInCallId}`);
-            if (contactResponse.ok) {
-              const updatedContact = await contactResponse.json();
-              // Mettre à jour le contact dans la liste
+            // Récupérer la réponse de l'API pour voir si elle contient le contact mis à jour
+            const hangupData = await hangupResponse.json();
+            if (hangupData && hangupData.contact) {
+              // Si l'API a renvoyé le contact mis à jour, on l'utilise directement
+              const updatedContact = hangupData.contact;
               setContacts(prev => prev.map(c => c.id === contactInCallId ? updatedContact : c));
-              // Mettre à jour le contact actif si c'est celui qui était en appel
               if (activeContact && activeContact.id === contactInCallId) {
                 setActiveContactState(updatedContact);
               }
               // Afficher un message de succès
               toast.success(`Appel terminé. Durée: ${updatedContact.dureeAppel || 'non disponible'}` );
+            } else {
+              // Sinon, on fait une requête séparée pour obtenir les dernières données du contact
+              const contactResponse = await fetch(`http://localhost:8000/contacts/${contactInCallId}`);
+              if (contactResponse.ok) {
+                const updatedContact = await contactResponse.json();
+                // Mettre à jour le contact dans la liste
+                setContacts(prev => prev.map(c => c.id === contactInCallId ? updatedContact : c));
+                // Mettre à jour le contact actif si c'est celui qui était en appel
+                if (activeContact && activeContact.id === contactInCallId) {
+                  setActiveContactState(updatedContact);
+                }
+                // Afficher un message de succès
+                toast.success(`Appel terminé. Durée: ${updatedContact.dureeAppel || 'non disponible'}` );
+              }
             }
-
+            
             // Réinitialiser l'ID du contact en appel
             setContactInCallId(null);
           }
         } catch (error) {
-          console.error(`[CallStatusPolling] Exception lors de l'appel à /api/hangup:`, error );
+          console.error(`[CallStatusPolling] Exception lors de l'appel à /adb/hangup:`, error );
           // Fallback vers la méthode traditionnelle
           const formData = new FormData();
           formData.append('contactId', contactInCallId);
@@ -903,15 +908,14 @@ export default function ContactsPage() {
 
         // Arrêter le polling puisque l'appel est terminé
         setIsPollingActive(false);
+        
+        // Forcer un rafraîchissement des contacts pour s'assurer que la durée d'appel est affichée
+        fetchAndSetContacts();
       }
-    }
-    // else if (!contactInCallId && isPollingActive) { // Cette condition est déjà gérée par le useEffect plus bas
-    //   setIsPollingActive(false);
-    // }
-     catch (error) {
+    } catch (error) {
       console.error(`[CallStatusPolling] Erreur lors de la vérification du statut d'appel:`, error);
     }
-  }, [contactInCallId, hangUpFormAction, activeContact, setContacts, setActiveContactState]);
+  }, [contactInCallId, hangUpFormAction, activeContact, setContacts, setActiveContactState, fetchAndSetContacts]);
 
   // Effet pour démarrer/arrêter le polling quand contactInCallId change
   useEffect(() => {
@@ -983,6 +987,7 @@ export default function ContactsPage() {
     { id: 'source', label: 'Source' },
     { id: 'dateAppel', label: 'Date Appel' },
     { id: 'heureAppel', label: 'Heure Appel' },
+    { id: 'dureeAppel', label: 'Durée Appel' },
     { id: 'dateRappel', label: 'Date Rappel' },
     { id: 'heureRappel', label: 'Heure Rappel' },
     { id: 'dateRendezVous', label: 'Date RDV' },
@@ -990,10 +995,15 @@ export default function ContactsPage() {
     { id: 'comment', label: 'Commentaire' }
   ], []);
 
-  const [visibleColumns, setVisibleColumns] = useState<string[]>(
+  const [visibleColumns, setVisibleColumns] = useState<string[]>(() => {
     // Initialiser avec tous les IDs de colonnes pour rendre toutes les colonnes visibles par défaut
-    tableColumns.map(col => col.id)
-  );
+    // S'assurer que 'dureeAppel' est toujours inclus si présent dans tableColumns
+    const initialVisible = tableColumns.map(col => col.id);
+    if (!initialVisible.includes('dureeAppel')) {
+      initialVisible.push('dureeAppel');
+    }
+    return initialVisible;
+  });
 
   if (isLoading && contacts.length === 0 && !importState.success) {
     let message = "Chargement des contacts...";
@@ -1097,7 +1107,7 @@ export default function ContactsPage() {
                       onEditContact={handleEditContactInline}
                       onActiveContactChange={setActiveContact}
                       scrollContainerRef={tableViewportRef}
-                      isProcessingId={
+                      contactInCallId={
                         isUpdateContactPending && activeContact && (!updateContactState.data || updateContactState.data.id !== activeContact.id) ? activeContact.id : null
                       }
                       error={updateContactState.success === false ? updateContactState.message : null}
