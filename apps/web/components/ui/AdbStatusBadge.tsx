@@ -175,7 +175,7 @@ export function AdbStatusBadge({ className }: AdbStatusBadgeProps) {
             "border-border",
             className
           )}>
-            <StatusIcon className={cn("h-5 w-5", iconColor, (isLoading && adbStatus === null) ? "animate-spin" : "")} />
+            <StatusIcon className={cn("h-5 w-5", iconColor, "")} />
             <span className={cn(iconColor, "whitespace-nowrap")}>{statusText}</span>
           </div>
         </TooltipTrigger>
