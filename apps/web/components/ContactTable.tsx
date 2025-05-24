@@ -34,6 +34,9 @@ import {
 import { EditableCell } from './EditableCell'; // Assurez-vous que le chemin est correct
 import { StatusBadge, type Status as StatusType } from '@/components/ui/StatusBadge'; // Importer StatusBadge et le type Status
 import { ReadOnlyCell } from './ReadOnlyCell'; // AJOUT: Importer ReadOnlyCell
+import { CommentCell } from './CommentCell'; // AJOUT: Importer CommentCell
+import { DateCell } from './DateCell'; // AJOUT: Importer DateCell
+import { TimeCell } from './TimeCell'; // AJOUT: Importer TimeCell
 import {
   User, 
   Mail, 
@@ -163,6 +166,14 @@ export const ContactTable = React.memo(function ContactTableComponent({
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const columns = React.useMemo<ColumnDef<Contact, any>[]>(() => [
     {
+      id: 'rowNumber',
+      header: () => '#',
+      cell: (info) => <div className="w-full text-center font-medium text-muted-foreground">{info.row.index + 1}</div>,
+      size: 60,
+      enableResizing: false,
+      meta: { isPinned: true }, // Épinglée à gauche
+    },
+    {
       id: 'firstName', // Assurez-vous que chaque colonne a un ID unique
       accessorKey: 'firstName',
       header: () => <IconHeader icon={User} text="Prénom" />,
@@ -239,9 +250,9 @@ export const ContactTable = React.memo(function ContactTableComponent({
       header: () => <IconHeader icon={MessageSquareText} text="Commentaire" />,
       cell: (info) => {
         const { onEditContact: metaOnEditContact } = (info.table.options.meta as TableMeta);
-        return <EditableCell {...info} onEditContact={metaOnEditContact} />;
+        return <CommentCell {...info} onEditContact={metaOnEditContact} />;
       },
-      size: 200,
+      size: 300,
     },
     {
       id: 'dateRappel', // Assurez-vous que chaque colonne a un ID unique
@@ -249,9 +260,9 @@ export const ContactTable = React.memo(function ContactTableComponent({
       header: () => <IconHeader icon={BellRing} text="Date Rappel" />,
       cell: (info) => {
         const { onEditContact: metaOnEditContact } = (info.table.options.meta as TableMeta);
-        return <EditableCell {...info} onEditContact={metaOnEditContact} />;
+        return <DateCell {...info} onEditContact={metaOnEditContact} placeholder="Date de rappel" />;
       },
-      size: 160,
+      size: 180, // Ajusté pour accommoder le bouton datepicker
       meta: { cellType: 'date' },
     },
     {
@@ -260,9 +271,9 @@ export const ContactTable = React.memo(function ContactTableComponent({
       header: () => <IconHeader icon={Clock} text="Heure Rappel" />,
       cell: (info) => {
         const { onEditContact: metaOnEditContact } = (info.table.options.meta as TableMeta);
-        return <EditableCell {...info} onEditContact={metaOnEditContact} />;
+        return <TimeCell {...info} onEditContact={metaOnEditContact} />;
       },
-      size: 150,
+      size: 180, // Ajuster la taille si nécessaire pour les deux sélecteurs et le bouton
       meta: { cellType: 'time' },
     },
     {
@@ -271,9 +282,9 @@ export const ContactTable = React.memo(function ContactTableComponent({
       header: () => <IconHeader icon={CalendarDays} text="Date RDV" />,
       cell: (info) => {
         const { onEditContact: metaOnEditContact } = (info.table.options.meta as TableMeta);
-        return <EditableCell {...info} onEditContact={metaOnEditContact} />;
+        return <DateCell {...info} onEditContact={metaOnEditContact} placeholder="Date de RDV" />;
       },
-      size: 160,
+      size: 180, // Ajusté
       meta: { cellType: 'date' },
     },
     {
@@ -282,9 +293,9 @@ export const ContactTable = React.memo(function ContactTableComponent({
       header: () => <IconHeader icon={Clock} text="Heure RDV" />,
       cell: (info) => {
         const { onEditContact: metaOnEditContact } = (info.table.options.meta as TableMeta);
-        return <EditableCell {...info} onEditContact={metaOnEditContact} />;
+        return <TimeCell {...info} onEditContact={metaOnEditContact} />;
       },
-      size: 150,
+      size: 180, // Ajuster la taille si nécessaire
       meta: { cellType: 'time' },
     },
     {
@@ -292,22 +303,19 @@ export const ContactTable = React.memo(function ContactTableComponent({
       accessorKey: 'dateAppel',
       header: () => <IconHeader icon={PhoneOutgoing} text="Date Appel" />,
       cell: (info) => {
-        const { onEditContact: metaOnEditContact } = (info.table.options.meta as TableMeta);
-        return <EditableCell {...info} onEditContact={metaOnEditContact} />;
+        return <ReadOnlyCell {...info} value={info.getValue() as string | null} />;
       },
-      size: 160,
+      size: 180, // Ajusté
       meta: { cellType: 'date' },
     },
-     {
-      id: 'heureAppel', // Assurez-vous que chaque colonne a un ID unique
-      accessorKey: 'heureAppel',
-      header: () => <IconHeader icon={Clock} text="Heure Appel" />,
+    {
+      id: 'heureAppel', // Assurez-vous que cet ID correspond à votre modèle de données
+      accessorKey: 'heureAppel', // Et que cet accesseur est correct
+      header: () => <IconHeader icon={Clock} text="Heure Appel" />, // Utiliser l'icône Clock
       cell: (info) => {
-        const { onEditContact: metaOnEditContact } = (info.table.options.meta as TableMeta);
-        return <EditableCell {...info} onEditContact={metaOnEditContact} />;
+        return <ReadOnlyCell {...info} value={info.getValue() as string | null} />;
       },
-      size: 150,
-      meta: { cellType: 'time' },
+      size: 180, // Ajuster la taille si nécessaire
     },
     {
       id: 'dureeAppel', // Assurez-vous que chaque colonne a un ID unique
@@ -360,7 +368,14 @@ export const ContactTable = React.memo(function ContactTableComponent({
   // Réactiver et ajuster le useEffect pour initialiser columnOrder après que `columns` soit défini
   React.useEffect(() => {
     if (columns && columns.length > 0) {
-      setColumnOrder(columns.map(c => c.id!));
+      // S'assurer que rowNumber est toujours le premier si elle existe
+      const initialOrder = columns.map(c => c.id!);
+      const rowNumberIndex = initialOrder.indexOf('rowNumber');
+      if (rowNumberIndex > 0) { // Si rowNumber existe et n'est pas premier
+        const rowNumId = initialOrder.splice(rowNumberIndex, 1)[0];
+        initialOrder.unshift(rowNumId);
+      }
+      setColumnOrder(initialOrder);
     }
   }, [columns]); // Dépendance à columns
 
@@ -371,14 +386,16 @@ export const ContactTable = React.memo(function ContactTableComponent({
     columnResizeMode: 'onChange', 
     state: {
       columnVisibility: visibleColumns ? 
-        // Remplacer l'implémentation actuelle pour la visibilité des colonnes
-        // L'état devrait être un objet où les clés sont les ID des colonnes et les valeurs sont des booléens
-        // Générer un objet avec TOUTES les colonnes d'abord, puis mettre à true seulement celles dans visibleColumns
         columns.reduce((acc, column) => {
-          acc[column.id!] = visibleColumns.includes(column.id!);
+          // La colonne rowNumber est toujours visible par défaut
+          if (column.id === 'rowNumber') {
+            acc[column.id!] = true;
+          } else {
+            acc[column.id!] = visibleColumns.includes(column.id!);
+          }
           return acc;
         }, {} as Record<string, boolean>) 
-        : {},
+        : { rowNumber: true }, // Assurer que rowNumber est visible même si visibleColumns est undefined initialement
       columnPinning,
       columnOrder,
     },
@@ -390,6 +407,15 @@ export const ContactTable = React.memo(function ContactTableComponent({
         const currentlyVisible = Object.entries(nextVisibility)
           .filter(([, isVisible]) => isVisible)
           .map(([columnId]) => columnId);
+        // S'assurer que rowNumber n'est pas accidentellement masquée par l'utilisateur via le dropdown de visibilité
+        // Bien que, idéalement, elle ne devrait pas être une option dans ce dropdown si elle est fixe.
+        // Pour l'instant, on la force visible ici si elle a été décochée.
+        // if (!currentlyVisible.includes('rowNumber')) {
+        //   currentlyVisible.unshift('rowNumber'); 
+        //   nextVisibility['rowNumber'] = true; 
+        // }
+        // La logique ci-dessus peut être problématique si l'utilisateur a un moyen de la cacher.
+        // Pour l'instant, on se fie à ce que visibleColumns propage correctement l'état.
         setVisibleColumns(currentlyVisible);
       }
     },
