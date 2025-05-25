@@ -9,7 +9,7 @@ import type { VariantProps } from 'class-variance-authority';
 import { buttonVariants } from "@/components/ui/button";
 import { 
   Phone, Mail, UploadCloud, DownloadCloud, Loader2, Trash2, CalendarDays,
-  BellRing, PhoneOff, Linkedin, /* Search, */ Globe,
+  BellRing, PhoneOff, Linkedin, /* Search, */ Globe, ServerCrash,
   type LucideProps
 } from 'lucide-react';
 import { useEffect, /* useRef, */ type ReactNode, useState, /* useCallback, */ startTransition } from 'react';
@@ -39,14 +39,15 @@ import { /* format, */ isValid, parseISO, format } from 'date-fns';
 // import { fr } from 'date-fns/locale'; // Supprimé car inutilisé
 // import { Calendar } from '@/components/ui/calendar'; // Supprimé car SimpleDateTimePicker est retiré
 import { MultiColorSwitch } from '@/components/ui/multicolor-switch';
-import { StatusProgressChart } from "@/components/ui/StatusProgressChart";
-import { FnKeyButton } from '@/components/ui/FnKeyButton';
+// import { StatusProgressChart } from "@/components/ui/StatusProgressChart"; // Supprimé car non utilisé
+// import { DateTimePicker } from "./ui/DateTimePicker"; // Commenté car non utilisé pour l'instant
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Input } from "@/components/ui/input";
+import { QualificationDialog } from "./ui/QualificationDialog";
 
 // TODO: Remplacez "votre-nom-utilisateur/votre-type-d-evenement" par votre slug d'événement Cal.com réel
 // Utilisation du calLink fourni par l'utilisateur
@@ -99,8 +100,8 @@ interface RibbonProps {
   isAutosaveActive?: boolean;
   onToggleAutosave?: () => void;
   requestFileHandleForAutosave?: () => Promise<boolean>;
-  // Prop pour le pourcentage de complétion des statuts
-  statusCompletionPercentage?: number;
+  // statusCompletionPercentage, // Supprimé car non utilisé
+  onUpdateContact: (contactId: string, updates: Partial<Contact>) => void;
 }
 
 export interface CustomButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement>, VariantProps<typeof buttonVariants> {}
@@ -335,23 +336,6 @@ Bien à vous
 --`
 };
 
-// Composant sélecteur de date et heure personnalisé - SUPPRIMÉ
-/*
-const SimpleDateTimePicker = ({ 
-  date, 
-  setDate,
-  initialDate, 
-  initialTime 
-}: { 
-  date: Date | undefined, 
-  setDate: (date: Date | undefined) => void,
-  initialDate?: string | null, 
-  initialTime?: string | null  
-}) => {
-  // ... (contenu du composant supprimé) ...
-};
-*/
-
 // Ajout du composant personnalisé pour l'icône d'infini (∞)
 const InfinityIcon = (props: LucideProps) => (
   <svg
@@ -408,7 +392,17 @@ const AnimatedInfinityIcon = (props: LucideProps & { active?: boolean }) => {
   );
 };
 
-export const Ribbon = React.forwardRef<HTMLDivElement, RibbonProps>((
+// Définition locale de QualificationData (si elle n'est pas utilisée ailleurs)
+interface QualificationData {
+  statutMarital: string; // Utiliser string pour plus de flexibilité si les types exacts posent problème
+  situationProfessionnelle: string;
+  revenusFoyer: string;
+  chargesFoyer: string;
+  resultat: string;
+  commentaire: string;
+}
+
+export const Ribbon = React.memo(React.forwardRef<HTMLDivElement, RibbonProps>((
   { 
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     selectedContactEmail,
@@ -427,17 +421,15 @@ export const Ribbon = React.forwardRef<HTMLDivElement, RibbonProps>((
     isAutosaveActive = false,
     onToggleAutosave,
     requestFileHandleForAutosave,
-    statusCompletionPercentage
+    onUpdateContact,
   },
   ref
 ) => {
-  // État pour suivre le mode de recherche automatique
-  const [autoSearchMode, setAutoSearchMode] = useState<AutoSearchMode>('disabled');
-  
-  // États pour le modal d'email
   const [emailModalOpen, setEmailModalOpen] = useState(false);
   const [selectedMeetingType, setSelectedMeetingType] = useState<MeetingType>('D0');
   const [selectedGender, setSelectedGender] = useState<GenderType>('Monsieur');
+  const [autoSearchMode, setAutoSearchMode] = useState<AutoSearchMode>('disabled');
+  const [isQualificationDialogOpen, setIsQualificationDialogOpen] = useState(false);
 
   // États pour le popover de Rappel
   const [isRappelPopoverOpen, setIsRappelPopoverOpen] = useState(false);
@@ -909,9 +901,6 @@ export const Ribbon = React.forwardRef<HTMLDivElement, RibbonProps>((
     toast.success(`Rappel programmé pour le ${format(rappelDateTime, 'dd/MM/yyyy HH:mm')}`);
   };
 
-  // Gérer les valeurs undefined sécurité
-  const safeStatusCompletionPercentage = statusCompletionPercentage ?? 0;
-
   // Fonction utilitaire pour le rendu de bulles d'infos
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const renderTooltip = (child: React.ReactElement, tooltipContent: string, ariaLabel: string, disabled?: boolean) => {
@@ -935,6 +924,21 @@ export const Ribbon = React.forwardRef<HTMLDivElement, RibbonProps>((
         </Tooltip>
       </TooltipProvider>
     );
+  };
+
+  const handleSaveQualification = (qualificationData: QualificationData) => {
+    if (activeContact && activeContact.id && onUpdateContact) {
+      // Le commentaire complet généré ou édité par l'utilisateur
+      const commentaireAEnregistrer = qualificationData.commentaire;
+      
+      // Mettre à jour le champ 'comment' du contact
+      onUpdateContact(activeContact.id, { comment: commentaireAEnregistrer });
+      
+      toast.success("Qualification enregistrée et commentaire du contact mis à jour.");
+    } else {
+      toast.error("Impossible de sauvegarder la qualification. Contact non actif ou fonction de mise à jour manquante.");
+    }
+    setIsQualificationDialogOpen(false); // Fermer la boite de dialogue
   };
 
   return (
@@ -983,7 +987,7 @@ export const Ribbon = React.forwardRef<HTMLDivElement, RibbonProps>((
 
         <RibbonSeparator />
 
-      {/* Groupe 2: Email, Rappel, Rendez-vous */}
+      {/* Groupe 2: Email, Rappel, Rendez-vous, Qualification */}
       <div className="flex items-center gap-1 p-1 border border-muted rounded-md shadow-sm mb-1 sm:mb-0 w-full sm:w-auto">
         <RibbonButton 
           label="Email" 
@@ -1046,8 +1050,17 @@ export const Ribbon = React.forwardRef<HTMLDivElement, RibbonProps>((
           label="Rendez-vous"
           icon={CalendarDays}
           onClick={handleCalComRendezVous}
-          disabled={!activeContact}
+          disabled={!activeContact || isImportPending}
           tooltipContent="Prendre un rendez-vous (Cal.com)"
+          className="flex-1 sm:flex-initial"
+        />
+
+        <RibbonButton 
+          label="Qualification"
+          icon={ServerCrash}
+          onClick={() => setIsQualificationDialogOpen(true)}
+          disabled={!activeContact || isImportPending}
+          tooltipContent="Qualifier le contact sélectionné"
           className="flex-1 sm:flex-initial"
         />
       </div>
@@ -1149,40 +1162,6 @@ export const Ribbon = React.forwardRef<HTMLDivElement, RibbonProps>((
       </div>
       
       <RibbonSeparator />
-      
-      {/* Groupe 5: Diagramme de progression des statuts */}
-      <div className="flex items-center gap-1 p-1 border border-muted rounded-md shadow-sm w-auto">
-        <TooltipProvider delayDuration={300}>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <div className="flex items-center justify-center h-full py-2 px-3">
-                <StatusProgressChart percentage={safeStatusCompletionPercentage} />
-              </div>
-            </TooltipTrigger>
-            <TooltipContent>
-              <p>{safeStatusCompletionPercentage}% des contacts ont un statut défini</p>
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-        
-        <FnKeyButton 
-          mappings={[
-            { keyName: "F2", statusName: "Mauvais num" },
-            { keyName: "F3", statusName: "Répondeur" },
-            { keyName: "F4", statusName: "À rappeler" },
-            { keyName: "F5", statusName: "Pas intéressé" },
-            { keyName: "F6", statusName: "Argumenté" },
-            { keyName: "F7", statusName: "D0" },
-            { keyName: "F8", statusName: "R0" },
-            { keyName: "F9", statusName: "Liste noire" },
-            { keyName: "F10", statusName: "Prématuré" }
-          ]}
-          onToggleFnMode={() => {
-            console.log('Mode touches Fn toggled');
-            // Implémentation de la logique pour activer/désactiver le mode touches Fn
-          }}
-        />
-      </div>
 
       {/* Modal pour la création d'email */}
       <Dialog open={emailModalOpen} onOpenChange={setEmailModalOpen}>
@@ -1260,9 +1239,16 @@ export const Ribbon = React.forwardRef<HTMLDivElement, RibbonProps>((
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Modal de Qualification */}
+      <QualificationDialog 
+        open={isQualificationDialogOpen}
+        onOpenChange={setIsQualificationDialogOpen}
+        onSaveQualification={handleSaveQualification}
+      />
     </div>
   );
-});
+}));
 Ribbon.displayName = "Ribbon"; 
 
 export default Ribbon; 

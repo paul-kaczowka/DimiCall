@@ -835,6 +835,12 @@ export default function ContactsPage() {
     return null;
   }, [contacts, safeUpdateContactAction]);
 
+  // Wrapper pour handleEditContactInline à passer à Ribbon
+  const handleUpdateContactFromRibbon = useCallback(async (contactId: string, dataToUpdate: Partial<ContactAppType>) => {
+    // `handleEditContactInline` attend un objet avec `id` au premier niveau
+    await handleEditContactInline({ id: contactId, ...dataToUpdate });
+  }, [handleEditContactInline]);
+
   // Ajouter cette fonction pour vérifier l'état de l'appel périodiquement
   const checkCallStatus = useCallback(async () => {
     if (!contactInCallId) {
@@ -1059,7 +1065,7 @@ export default function ContactsPage() {
               isAutosaveActive={isAutosaveActive}
               onToggleAutosave={toggleAutosave}
               requestFileHandleForAutosave={handleRequestFileHandle}
-              statusCompletionPercentage={statusCompletionPercentage}
+              onUpdateContact={handleUpdateContactFromRibbon}
             />
           </div>
           <ThemeToggleButton />
