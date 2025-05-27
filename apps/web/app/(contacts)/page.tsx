@@ -5,11 +5,10 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format, parseISO, isValid } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { Ribbon } from '@/components/Ribbon';
-import { ContactTable } from '@/components/ContactTable';
 import { TableSearchBar, type SearchableColumn } from '@/components/ui/TableSearchBar';
-import { useAutosaveFile } from '@/hooks/useAutosaveFile';
 import { toast } from 'react-toastify';
 import { importContactsAction, updateContactAction, clearAllDataAction, callAction, hangUpCallAction } from '@/app/actions';
+import { useSmsAction } from '@/hooks/useSmsAction';
 import {
   Loader2,
   User,
@@ -45,6 +44,7 @@ import { HTML5Backend } from 'react-dnd-html5-backend';
 import { ThemeToggleButton } from '@/components/ui/ThemeToggleButton';
 import UploadDropZone from '@/components/UploadDropZone';
 import ColumnVisibilityDropdown from '../../components/ui/ColumnVisibilityDropdown';
+import dynamic from 'next/dynamic';
 
 // Au début du fichier, sous les imports, ajouter l'extension de Window
 declare global {
@@ -78,6 +78,12 @@ interface ContactAppType extends ContactSchemaType {
   // bookingTitle?: string | null; // SUPPRIMÉ
   // bookingDuration?: number | null; // SUPPRIMÉ
 }
+
+// Charger dynamiquement ContactTable côté client pour désactiver le SSR et éviter les mismatches de rendu
+const ContactTable = dynamic(
+  () => import('@/components/ContactTable').then(mod => mod.ContactTable),
+  { ssr: false }
+);
 
 // Fonctions d'appel API pour TanStack Query
 // Ces fonctions doivent retourner les promesses directement
@@ -169,20 +175,43 @@ export default function ContactsPage() {
     initAnimationStyles();
   }, []);
 
+  const [isClientMounted, setIsClientMounted] = useState(false);
+  useEffect(() => {
+    setIsClientMounted(true);
+  }, []);
+
   // Client TanStack Query
   const queryClient = useQueryClient();
 
-  // Remplacer useState pour contacts et isLoading par useQuery
-  const { data: contacts = [], isLoading, error: contactsError } = useQuery<ContactAppType[], Error>({
-    queryKey: ['contacts'],
-    queryFn: getContactsAPI,
-  });
+  // Charger les contacts depuis le localStorage si présents
+  const storedContacts = typeof window !== 'undefined'
+    ? JSON.parse(localStorage.getItem('dimicall_contacts') || '[]')
+    : [];
+
+  // Récupérer les contacts depuis l'API avec données initiales depuis localStorage
+  const { data: contacts = storedContacts, isLoading, error: contactsError } =
+    useQuery<ContactAppType[], Error>({
+      queryKey: ['contacts'],
+      queryFn: getContactsAPI,
+      initialData: storedContacts,
+    });
 
   useEffect(() => {
     if (contactsError) {
       toast.error(`Impossible de charger les contacts: ${contactsError.message}`);
     }
   }, [contactsError]);
+
+  // Sauvegarder les contacts dans localStorage à chaque mise à jour
+  useEffect(() => {
+    if (!isLoading) {
+      try {
+        localStorage.setItem('dimicall_contacts', JSON.stringify(contacts));
+      } catch (error) {
+        console.error("Échec de la sauvegarde des contacts dans localStorage", error);
+      }
+    }
+  }, [contacts, isLoading]);
 
   const [activeContact, setActiveContactState] = useState<ContactAppType | null>(null);
   const [contactInCallId, setContactInCallId] = useState<string | null>(null);
@@ -212,9 +241,9 @@ export default function ContactsPage() {
   }, []);
 
   // Définir filteredContacts tôt dans le composant pour éviter l'erreur "Cannot access before initialization"
-  const filteredContacts = useMemo(() => {
+  const filteredContacts = useMemo<ContactAppType[]>(() => {
     if (!searchTerm) return contacts;
-    return contacts.filter(contact => {
+    return contacts.filter((contact: ContactAppType) => {
       const searchableValue = contact[selectedSearchColumn as keyof ContactAppType];
       if (searchableValue && typeof searchableValue === 'string') {
         return searchableValue.toLowerCase().includes(searchTerm.toLowerCase());
@@ -222,17 +251,6 @@ export default function ContactsPage() {
       return false;
     });
   }, [contacts, searchTerm, selectedSearchColumn]);
-
-  // Calculer le pourcentage de contacts ayant un statut défini
-  const statusCompletionPercentage = useMemo(() => {
-    if (contacts.length === 0) return 0;
-
-    const contactsWithStatus = contacts.filter(contact =>
-      contact.status && contact.status.trim() !== ''
-    );
-
-    return Math.round((contactsWithStatus.length / contacts.length) * 100);
-  }, [contacts]);
 
   // Remplacer useActionState par useMutation pour chaque action
   const importMutation = useMutation<
@@ -264,12 +282,8 @@ export default function ContactsPage() {
     onSuccess: (updatedContact) => {
       toast.success("Contact mis à jour avec succès !");
       queryClient.invalidateQueries({ queryKey: ['contacts'] });
-      // Mettre à jour activeContact si c'est celui qui a été modifié
       if (activeContact && activeContact.id === updatedContact.id) {
         setActiveContactState(updatedContact);
-      }
-      if (isAutosaveActive) {
-        triggerSave(undefined, false, false); // Garder l'autosave si pertinent
       }
     },
     onError: (error: Error) => {
@@ -290,10 +304,7 @@ export default function ContactsPage() {
       queryClient.invalidateQueries({ queryKey: ['contacts'] });
       if (activeContact && activeContact.id === updatedContact.id) {
         setActiveContactState(updatedContact);
-        setContactInCallId(updatedContact.id);
-      }
-      if (isAutosaveActive) {
-        triggerSave(undefined, false, false);
+        setContactInCallId(updatedContact.id ?? null);
       }
     },
     onError: (error: Error) => {
@@ -320,9 +331,6 @@ export default function ContactsPage() {
       }
       
       setContactInCallId(null);
-      if (isAutosaveActive) {
-        triggerSave(undefined, false, false);
-      }
     },
     onError: (error: Error) => {
       toast.error(`Erreur pour raccrocher: ${error.message}`);
@@ -342,10 +350,6 @@ export default function ContactsPage() {
       toast.success(data.message || "Toutes les données ont été effacées.");
       queryClient.invalidateQueries({ queryKey: ['contacts'] });
       setActiveContact(null);
-      if (autosaveFileHandle) {
-        resetFileHandle(); // Garder la logique d'autosave si nécessaire
-        toast.info("La session d'autosave a été réinitialisée.");
-      }
     },
     onError: (error: Error) => {
       toast.error(`Erreur de suppression: ${error.message}`);
@@ -370,108 +374,12 @@ export default function ContactsPage() {
   const tableViewportRef = useRef<HTMLDivElement>(null);
   const mainPageRef = useRef<HTMLDivElement>(null);
 
+  // État pour la confirmation de suppression de toutes données
+  const [isClearConfirmOpen, setIsClearConfirmOpen] = useState(false);
+
   const setActiveContact = useCallback((contact: ContactAppType | null) => {
     setActiveContactState(contact);
   }, []);
-
-  const getContactsForAutosave = useCallback(async () => {
-    return contacts;
-  }, [contacts]);
-
-  const {
-    isSaving: isAutosaveSaving,
-    error: autosaveHookError,
-    fileHandle: autosaveFileHandle,
-    resetFileHandle,
-    requestFileHandle,
-    triggerSave,
-    isAutoSaveRestored
-  } = useAutosaveFile(getContactsForAutosave);
-
-  const [isClearConfirmOpen, setIsClearConfirmOpen] = useState(false);
-  // État pour suivre si l'autosauvegarde est active
-  const [isAutosaveActive, setIsAutosaveActive] = useState(false);
-
-  // Référence pour tracker si une opération d'autosave est en cours
-  const autosaveOperationInProgressRef = useRef(false);
-
-  // Mettre à jour l'état isAutosaveActive quand autosaveFileHandle change ou isAutoSaveRestored change
-  useEffect(() => {
-    // Considérer l'autosave comme actif si le fichier handle existe OU si l'autosave a été restauré
-    setIsAutosaveActive(!!autosaveFileHandle || isAutoSaveRestored);
-
-    // Activer l'autosauvegarde si elle a été restaurée automatiquement
-    if (isAutoSaveRestored) {
-      toast.success("Autosauvegarde restaurée et activée automatiquement");
-      console.log("[Autosave] Autosauvegarde restaurée et activée automatiquement");
-    }
-  }, [autosaveFileHandle, isAutoSaveRestored]);
-
-  // Fonction pour demander l'emplacement du fichier d'autosauvegarde
-  const handleRequestFileHandle = useCallback(async () => {
-    try {
-      // Vérifier si une demande de sélection est déjà en cours
-      if (isAutosaveSaving || autosaveOperationInProgressRef.current) {
-        console.log("[Autosave] Une opération d'autosave est déjà en cours");
-        return false;
-      }
-
-      // Définir le verrou pour éviter les opérations multiples
-      autosaveOperationInProgressRef.current = true;
-
-      const handle = await requestFileHandle();
-      if (handle) {
-        // Déclencher une première sauvegarde
-        await triggerSave(undefined, true);
-        return true;
-      }
-      return false;
-    } catch (error) {
-      console.error("[Autosave] Erreur lors de la demande de l'emplacement du fichier:", error);
-      return false;
-    } finally {
-      // Relâcher le verrou avec un délai pour éviter les clics multiples
-      setTimeout(() => {
-        autosaveOperationInProgressRef.current = false;
-      }, 1000);
-    }
-  }, [requestFileHandle, triggerSave, isAutosaveSaving]);
-
-  // Fonction pour activer/désactiver l'autosauvegarde
-  const toggleAutosave = useCallback(() => {
-    // Vérifier si une opération est déjà en cours
-    if (autosaveOperationInProgressRef.current) {
-      console.log("[Autosave] Une opération est déjà en cours, ignoré");
-      return;
-    }
-
-    if (isAutosaveActive && autosaveFileHandle) {
-      // Désactiver l'autosauvegarde
-      resetFileHandle();
-      toast.info("Autosauvegarde désactivée");
-    } else if (!isAutosaveActive && !autosaveFileHandle) {
-      // L'activation se fait via handleRequestFileHandle,
-      // rien à faire ici, car le bouton appellera déjà handleRequestFileHandle
-      console.log("[Autosave] Préparation de la demande d'emplacement du fichier");
-    }
-  }, [isAutosaveActive, autosaveFileHandle, resetFileHandle]);
-
-  useEffect(() => {
-    if (autosaveHookError) {
-      toast.error(`Erreur d'autosave/téléchargement: ${autosaveHookError}`);
-    }
-  }, [autosaveHookError]);
-
-  // Effet pour suivre l'état de la sauvegarde et notifier l'utilisateur
-  const [wasSaving, setWasSaving] = useState(false);
-  useEffect(() => {
-    if (wasSaving && !isAutosaveSaving && !autosaveHookError) {
-      if (autosaveFileHandle) {
-        toast.success("Fichier sauvegardé automatiquement !");
-      }
-    }
-    setWasSaving(isAutosaveSaving);
-  }, [isAutosaveSaving, wasSaving, autosaveHookError, autosaveFileHandle]);
 
   const handleRequestClearAllData = () => {
     setIsClearConfirmOpen(true);
@@ -545,7 +453,7 @@ export default function ContactsPage() {
         statusFormData.append('status', newStatus);
         await updateContactMutation.mutateAsync(statusFormData);
 
-        const currentIndex = filteredContacts.findIndex(c => c.id === contactId);
+        const currentIndex = filteredContacts.findIndex((c: ContactAppType) => c.id === contactId);
         const hasNextContact = currentIndex !== -1 && currentIndex < filteredContacts.length - 1;
 
         if (hasNextContact) {
@@ -578,7 +486,6 @@ export default function ContactsPage() {
     updateContactMutation,
     callMutation,
     hangUpMutation,
-    queryClient,
     setActiveContact,
   ]);
 
@@ -828,7 +735,7 @@ export default function ContactsPage() {
 
     safeUpdateContactAction(formData);
 
-    const currentContact = contacts.find(c => c.id === contactId);
+    const currentContact = contacts.find((c: ContactAppType) => c.id === contactId);
     if (currentContact) {
       return { ...currentContact, ...dataToUpdate };
     }
@@ -1016,19 +923,14 @@ export default function ContactsPage() {
     return initialVisible;
   });
 
-  if (isLoading && contacts.length === 0 && !importMutation.isError) {
-    let message = "Chargement des contacts...";
-    if (importMutation.isError && importMutation.failureReason) {
-      const errorMessage = importMutation.failureReason instanceof Error ? importMutation.failureReason.message : "Erreur inconnue lors de l'importation.";
-      message = errorMessage;
-    }
+  // Ajouter le hook SMS
+  const { sendSmsAction } = useSmsAction();
+
+  if (isLoading && contacts.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center h-screen bg-background text-foreground">
         <Loader2 className="h-16 w-16 animate-spin text-primary mb-6" />
-        <p className="text-xl font-medium text-muted-foreground">{message}</p>
-        {importMutation.isError && (
-          <Button onClick={() => queryClient.refetchQueries({ queryKey: ['contacts']})} className="mt-4">Réessayer le chargement</Button>
-        )}
+        <p className="text-xl font-medium text-muted-foreground">Chargement des contacts...</p>
       </div>
     );
   }
@@ -1053,7 +955,6 @@ export default function ContactsPage() {
               // Utiliser la nouvelle fonction pour gérer le changement de l'input file
               handleFileSelectedForImport={handleFileInputChange}
               isImportPending={importMutation.isPending}
-              isAutosaveSaving={isAutosaveSaving}
               onRequestClearAllData={handleRequestClearAllData}
               activeContact={activeContact}
               callFormAction={safeCallAction}
@@ -1062,10 +963,8 @@ export default function ContactsPage() {
               onExportClick={handleRequestManualExport}
               onBookingCreated={handleBookingCreated}
               onRappelDateTimeSelected={handleRappelDateTimeSelected}
-              isAutosaveActive={isAutosaveActive}
-              onToggleAutosave={toggleAutosave}
-              requestFileHandleForAutosave={handleRequestFileHandle}
               onUpdateContact={handleUpdateContactFromRibbon}
+              sendSmsAction={sendSmsAction}
             />
           </div>
           <ThemeToggleButton />
@@ -1112,20 +1011,15 @@ export default function ContactsPage() {
                      </div>
                    ) : (
                     <>
-                      {/* Afficher ContactTable si des contacts sont présents */}
-                      {filteredContacts.length > 0 && (
+                      {/* Afficher ContactTable si des contacts sont présents ET que le client est monté*/}
+                      {isClientMounted && filteredContacts.length > 0 && (
                     <ContactTable
                       data={filteredContacts}
                       onEditContact={handleEditContactInline}
                       onActiveContactChange={setActiveContact}
                       scrollContainerRef={tableViewportRef}
-                      contactInCallId={ 
-                        updateContactMutation.isPending && activeContact && 
-                        (!updateContactMutation.isSuccess || (updateContactMutation.data as ContactAppType).id !== activeContact.id) 
-                        ? activeContact.id 
-                        : null
-                      }
-                      error={updateContactMutation.isError && updateContactMutation.failureReason ? (updateContactMutation.failureReason instanceof Error ? updateContactMutation.failureReason.message : "Erreur de mise à jour inconnue") : null}
+                      contactInCallId={contactInCallId}
+                      error={updateContactMutation.error ? (updateContactMutation.error instanceof Error ? updateContactMutation.error.message : String(updateContactMutation.error)) : null}
                       columns={tableColumns}
                       visibleColumns={visibleColumns}
                       setVisibleColumns={setVisibleColumns}
@@ -1139,10 +1033,10 @@ export default function ContactsPage() {
                       <UploadDropZone
                         onFileSelected={handleFileSelectedForDropZone}
                         className={cn(
-                          // Applique le positionnement absolu uniquement si des contacts sont présents
-                          filteredContacts.length > 0 ? "absolute inset-0 z-10" : "p-4",
-                          // Contrôle la visibilité de l'overlay basé sur isDragOverTable si des contacts sont présents
-                          filteredContacts.length > 0 && !isDragOverTable ? "opacity-0 pointer-events-none" : "",
+                          // Applique le positionnement absolu uniquement si des contacts sont présents ET client monté
+                          (isClientMounted && filteredContacts.length > 0) ? "absolute inset-0 z-10" : "p-4",
+                          // Contrôle la visibilité de l'overlay basé sur isDragOverTable si des contacts sont présents ET client monté
+                          (isClientMounted && filteredContacts.length > 0 && !isDragOverTable) ? "opacity-0 pointer-events-none" : "",
                           // Ajoutez ici d'autres classes spécifiques si nécessaire, par exemple pour le fond en mode vide
                         )}
                     />
@@ -1153,11 +1047,14 @@ export default function ContactsPage() {
 
             <footer className="shrink-0 mt-auto pt-4 pb-2 text-xs text-muted-foreground flex items-center justify-between">
               <div>
-                {autosaveFileHandle && <span className="text-green-600">(Autosave activé)</span>}
-                {isAutosaveSaving && <span className="ml-2"><Loader2 className="h-3 w-3 animate-spin inline-block" /> Sauvegarde auto...</span>}
+                {/* Indicateur autosave supprimé */}
               </div>
               <div className="font-medium text-center mx-auto">
-                <span className="text-sm">{filteredContacts.length} contact{filteredContacts.length === 1 ? '' : 's'}</span>
+                {isClientMounted ? (
+                  <span className="text-sm">{filteredContacts.length} contact{filteredContacts.length === 1 ? '' : 's'}</span>
+                ) : (
+                  <span className="text-sm">0 contacts</span>
+                )}
               </div>
               <div>
                 <AdbStatusBadge />

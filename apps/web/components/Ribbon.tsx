@@ -10,7 +10,7 @@ import { buttonVariants } from "@/components/ui/button";
 import { 
   Phone, Mail, UploadCloud, DownloadCloud, Loader2, Trash2, CalendarDays,
   BellRing, PhoneOff, Linkedin, /* Search, */ Globe, ServerCrash,
-  type LucideProps
+  type LucideProps, MessageSquare
 } from 'lucide-react';
 import { useEffect, /* useRef, */ type ReactNode, useState, /* useCallback, */ startTransition } from 'react';
 import { toast } from 'react-toastify';
@@ -38,7 +38,7 @@ import { Label } from "@/components/ui/label";
 import { /* format, */ isValid, parseISO, format } from 'date-fns';
 // import { fr } from 'date-fns/locale'; // Supprimé car inutilisé
 // import { Calendar } from '@/components/ui/calendar'; // Supprimé car SimpleDateTimePicker est retiré
-import { MultiColorSwitch } from '@/components/ui/multicolor-switch';
+// import { MultiColorSwitch } from '@/components/ui/multicolor-switch'; // Supprimé
 // import { StatusProgressChart } from "@/components/ui/StatusProgressChart"; // Supprimé car non utilisé
 // import { DateTimePicker } from "./ui/DateTimePicker"; // Commenté car non utilisé pour l'instant
 import {
@@ -85,7 +85,6 @@ interface RibbonProps {
   inputFileRef: React.RefObject<HTMLInputElement | null>;
   handleFileSelectedForImport: (event: React.ChangeEvent<HTMLInputElement>) => void;
   isImportPending?: boolean;
-  isAutosaveSaving?: boolean;
   onRequestClearAllData: () => void;
   activeContact?: Contact | null;
   onBookingCreated?: (bookingInfo: { date: string; time: string; }) => void;
@@ -97,11 +96,12 @@ interface RibbonProps {
   // onEmailClick?: () => void; // Supprimé, handleEmail est local
   onRappelDateTimeSelected: (dateTime: Date) => void;
   // Nouvelles props pour la gestion de l'autosave
-  isAutosaveActive?: boolean;
-  onToggleAutosave?: () => void;
-  requestFileHandleForAutosave?: () => Promise<boolean>;
+  // isAutosaveActive?: boolean;
+  // onToggleAutosave?: () => void;
+  // requestFileHandleForAutosave?: () => Promise<boolean>;
   // statusCompletionPercentage, // Supprimé car non utilisé
   onUpdateContact: (contactId: string, updates: Partial<Contact>) => void;
+  sendSmsAction?: (phoneNumber: string, message: string) => Promise<void>;
 }
 
 export interface CustomButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement>, VariantProps<typeof buttonVariants> {}
@@ -409,7 +409,6 @@ export const Ribbon = React.memo(React.forwardRef<HTMLDivElement, RibbonProps>((
     inputFileRef,
     handleFileSelectedForImport,
     isImportPending,
-    isAutosaveSaving,
     onRequestClearAllData,
     activeContact,
     callFormAction,
@@ -418,14 +417,13 @@ export const Ribbon = React.memo(React.forwardRef<HTMLDivElement, RibbonProps>((
     onExportClick,
     onBookingCreated,
     onRappelDateTimeSelected,
-    isAutosaveActive = false,
-    onToggleAutosave,
-    requestFileHandleForAutosave,
     onUpdateContact,
+    sendSmsAction,
   },
   ref
 ) => {
   const [emailModalOpen, setEmailModalOpen] = useState(false);
+  const [smsModalOpen, setSmsModalOpen] = useState(false);
   const [selectedMeetingType, setSelectedMeetingType] = useState<MeetingType>('D0');
   const [selectedGender, setSelectedGender] = useState<GenderType>('Monsieur');
   const [autoSearchMode, setAutoSearchMode] = useState<AutoSearchMode>('disabled');
@@ -620,6 +618,69 @@ export const Ribbon = React.memo(React.forwardRef<HTMLDivElement, RibbonProps>((
     const formattedTime = `${hour}h${minute > 0 ? minute.toString().padStart(2, '0') : ''}`;
     
     return `${weekday} ${day} ${month} ${year} à ${formattedTime}`;
+  };
+
+  // Template pour le SMS
+  const SMS_TEMPLATE = (lastName: string, gender: GenderType) =>
+    `Bonjour ${gender} ${lastName},
+
+Pour resituer mon appel, je suis gérant privé au sein du cabinet de gestion de patrimoine Arcanis Conseil. Je vous envoie l'adresse de notre site web que vous puissiez en savoir d'avantage : https://arcanis-conseil.fr
+
+Le site est avant tout une vitrine, le mieux est de m'appeler si vous souhaitez davantage d'informations ou de prendre un créneau de 30 minutes dans mon agenda via ce lien : https://calendly.com/dimitri-morel-arcanis-conseil/audit
+
+Bien à vous
+--
+
+Dimitri MOREL - Arcanis Conseil`;
+
+  // Fonction pour gérer l'ouverture du modal SMS
+  const handleSms = () => {
+    if (!activeContact || !activeContact.phoneNumber) {
+      toast.info(activeContact ? "Le numéro de téléphone de ce contact n'est pas renseigné." : "Veuillez sélectionner un contact pour envoyer un SMS.");
+      return;
+    }
+    
+    // Définir le genre par défaut en fonction du prénom (si disponible)
+    if (activeContact.firstName) {
+      const lastChar = activeContact.firstName.toLowerCase().slice(-1);
+      if (['a', 'e', 'é', 'è', 'ê', 'i', 'y'].includes(lastChar)) {
+        setSelectedGender('Madame');
+      } else {
+        setSelectedGender('Monsieur');
+      }
+    }
+    
+    // Ouvrir le modal
+    setSmsModalOpen(true);
+  };
+
+  // Fonction pour générer et envoyer le SMS via ADB
+  const generateAndSendSms = async () => {
+    if (!activeContact || !activeContact.phoneNumber || !activeContact.lastName) {
+      toast.error("Les informations du contact sont incomplètes.");
+      return;
+    }
+
+    const smsContent = SMS_TEMPLATE(activeContact.lastName, selectedGender);
+
+    try {
+      // Si la fonction sendSmsAction est fournie, l'utiliser
+      if (sendSmsAction) {
+        await sendSmsAction(activeContact.phoneNumber, smsContent);
+        toast.success("Application SMS ouverte avec le message pré-rempli.");
+      } else {
+        // Fallback: ouvrir un lien sms: (fonctionne sur certains navigateurs/appareils)
+        const encodedSms = encodeURIComponent(smsContent);
+        window.open(`sms:${activeContact.phoneNumber}?body=${encodedSms}`, '_blank');
+        toast.info("Tentative d'ouverture de l'application SMS. Si cela ne fonctionne pas, veuillez configurer l'action sendSmsAction.");
+      }
+      
+      // Fermer le modal
+      setSmsModalOpen(false);
+    } catch (error) {
+      console.error("Erreur lors de l'envoi du SMS:", error);
+      toast.error("Impossible d'ouvrir l'application SMS.");
+    }
   };
 
   // Fonction pour générer et ouvrir l'email
@@ -987,7 +1048,7 @@ export const Ribbon = React.memo(React.forwardRef<HTMLDivElement, RibbonProps>((
 
         <RibbonSeparator />
 
-      {/* Groupe 2: Email, Rappel, Rendez-vous, Qualification */}
+      {/* Groupe 2: Email, SMS, Rappel, Rendez-vous, Qualification */}
       <div className="flex items-center gap-1 p-1 border border-muted rounded-md shadow-sm mb-1 sm:mb-0 w-full sm:w-auto">
         <RibbonButton 
           label="Email" 
@@ -995,6 +1056,15 @@ export const Ribbon = React.memo(React.forwardRef<HTMLDivElement, RibbonProps>((
           onClick={handleEmail}
           disabled={!activeContact || !activeContact.email || isImportPending}
           tooltipContent="Envoyer un email au contact sélectionné"
+          className="flex-1 sm:flex-initial"
+        />
+        
+        <RibbonButton 
+          label="Sms" 
+          icon={MessageSquare} 
+          onClick={handleSms}
+          disabled={!activeContact || !activeContact.phoneNumber || isImportPending}
+          tooltipContent="Envoyer un SMS au contact sélectionné"
           className="flex-1 sm:flex-initial"
         />
         
@@ -1106,56 +1176,25 @@ export const Ribbon = React.memo(React.forwardRef<HTMLDivElement, RibbonProps>((
           label="Importer"
           icon={UploadCloud} 
           onClick={handleImportClick} 
-          disabled={isImportPending || isAutosaveSaving}
-          tooltipContent={isImportPending ? "Importation en cours..." : (isAutosaveSaving ? "Sauvegarde auto en cours..." : "Importer des contacts (fichier CSV/Excel)")}
+          disabled={isImportPending}
+          tooltipContent={isImportPending ? "Importation en cours..." : "Importer des contacts (fichier CSV/Excel)"}
           className="flex-1 sm:flex-initial"
         />
         <RibbonButton 
           label="Exporter"
           icon={DownloadCloud} 
           onClick={onExportClick}
-          disabled={isImportPending || isAutosaveSaving}
+          disabled={isImportPending}
           tooltipContent="Exporter les contacts actuels"
           className="flex-1 sm:flex-initial"
         />
-        
-        <div className="h-12 w-px bg-border mx-2 self-center"></div>
-        
-        <TooltipProvider delayDuration={300}>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <div className="flex items-center justify-center h-full py-2 px-3">
-                <MultiColorSwitch 
-                  checked={isAutosaveActive}
-                  onCheckedChange={async (checked) => {
-                    if (checked) {
-                      // Si on active l'autosave
-                      const success = await requestFileHandleForAutosave?.();
-                      if (success) {
-                        onToggleAutosave?.();
-                      }
-                    } else {
-                      // Si on désactive l'autosave
-                      onToggleAutosave?.();
-                    }
-                  }}
-                  disabled={isImportPending}
-                  label="Autosave"
-                />
-              </div>
-            </TooltipTrigger>
-            <TooltipContent>
-              <p>{isAutosaveActive ? "Désactiver la sauvegarde automatique" : "Activer la sauvegarde automatique"}</p>
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
         
         <RibbonButton 
           label="Tout effacer"
           icon={Trash2} 
           onClick={onRequestClearAllData} 
           variant="destructive"
-          disabled={isImportPending || isAutosaveSaving}
+          disabled={isImportPending}
           tooltipContent="Effacer tous les contacts (demande une confirmation)"
           className="flex-1 sm:flex-initial"
         />
@@ -1235,6 +1274,48 @@ export const Ribbon = React.memo(React.forwardRef<HTMLDivElement, RibbonProps>((
             </Button>
             <Button onClick={generateAndOpenEmail}>
               Générer l&apos;email
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal pour la création de SMS */}
+      <Dialog open={smsModalOpen} onOpenChange={setSmsModalOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Création de SMS</DialogTitle>
+            <DialogDescription className="sr-only">
+              Configurez les détails du SMS.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-5 py-4">
+            {/* Sélecteur de civilité */}
+            <div className="space-y-3">
+              <h3 className="font-medium text-sm">Civilité</h3>
+              <RadioGroup 
+                value={selectedGender} 
+                onValueChange={(value: string) => setSelectedGender(value as GenderType)}
+                className="flex gap-4"
+              >
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="Monsieur" id="sms-monsieur" />
+                  <Label htmlFor="sms-monsieur">Monsieur</Label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="Madame" id="sms-madame" />
+                  <Label htmlFor="sms-madame">Madame</Label>
+                </div>
+              </RadioGroup>
+            </div>
+          </div>
+          
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSmsModalOpen(false)}>
+              Annuler
+            </Button>
+            <Button onClick={generateAndSendSms}>
+              Générer le SMS
             </Button>
           </DialogFooter>
         </DialogContent>
