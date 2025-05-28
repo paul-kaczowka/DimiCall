@@ -53,6 +53,7 @@ import {
 import { cn, formatPhoneNumber } from '@/lib/utils';
 import { DraggableTableHead } from "@/components/ui/DraggableTableHead"; // Ajouté
 import UploadDropZone from './UploadDropZone'; // Corrigé l'import
+import { startTransition } from 'react';
 
 // Définir les props pour ContactTable
 interface ContactTableProps {
@@ -129,7 +130,7 @@ export const ContactTable = React.memo(function ContactTableComponent({
   // Optimiser la fonction de clic sur une ligne - POSITIONNER AVANT D'AUTRES HOOKS
   const handleRowClick = React.useCallback((row: Row<Contact>) => {
     console.log(`[ContactTable] Row clicked, ID: ${row.original.id}`);
-    setActiveRowId(row.original.id);
+    setActiveRowId(row.original.id || null);
   }, []);
 
   // Utilisation de la prop error (exemple simple)
@@ -321,7 +322,11 @@ export const ContactTable = React.memo(function ContactTableComponent({
       id: 'dureeAppel', // Assurez-vous que chaque colonne a un ID unique
       accessorKey: 'dureeAppel',
       header: () => <IconHeader icon={Hourglass} text="Durée Appel" />,
-      cell: (info) => <DureeAppelCell contactId={info.row.original.id} value={info.getValue()} />,
+      cell: (info) => {
+        const contactId = info.row.original.id;
+        // Rendre la cellule uniquement si contactId est défini pour DureeAppelCell
+        return contactId ? <DureeAppelCell contactId={contactId} value={info.getValue()} /> : null;
+      },
       size: 120,
     },
     {
@@ -419,7 +424,7 @@ export const ContactTable = React.memo(function ContactTableComponent({
         setVisibleColumns(currentlyVisible);
       }
     },
-    getRowId: (originalRow) => originalRow.id,
+    getRowId: (originalRow) => originalRow.id || '',
     meta: {
       onEditContact,
     } as TableMeta
@@ -546,35 +551,40 @@ export const ContactTable = React.memo(function ContactTableComponent({
             )}
             {isScrollContainerReady && rowVirtualizer.getTotalSize() > 0 && rowVirtualizer.getVirtualItems().map(virtualRow => {
               const row = rows[virtualRow.index] as Row<Contact>;
-              const isSelected = row.id === activeRowId; // Déterminer si la ligne est sélectionnée
-              // const callEnded = !!row.original.dureeAppel && row.original.dureeAppel.trim() !== ""; // Ancienne vérification
-              const callEnded = !!row.original.dateAppel && row.original.dateAppel.trim() !== ""; // Nouvelle vérification basée sur dateAppel
+              const isSelected = row.id === activeRowId;
+              const callEnded = !!row.original.dateAppel && row.original.dateAppel.trim() !== "";
 
               return (
                 <TableRow
                   key={row.id}
-                  data-index={virtualRow.index} // L'index de l'élément virtuel
-                  ref={node => rowVirtualizer.measureElement(node)} // Mesurer l'élément
-                  onClick={() => {
-                    handleRowClick(row);
-                  }}
-                  data-state={isSelected ? "selected" : "none"} // Utiliser data-state="selected"
+                  data-index={virtualRow.index}
+                  onClick={() => startTransition(() => handleRowClick(row))}
+                  data-state={isSelected ? "selected" : "none"}
                   className={cn(
-                    "flex absolute w-full", // Classes de base pour la virtualisation
-                    "duration-300", // Ajout pour affecter `transition-colors` (qui est déjà présent sur TableRow)
-                    !isSelected && "hover:bg-muted/50", // Effet de survol pour les non-sélectionnés
-                    isSelected && "border-l-4 border-primary", // Notre bordure gauche personnalisée
-                    isSelected && "border-b-transparent", // Rend la bordure inf. transparente si sélectionnée
-                    // contactStatus === "Argumenté" && !isSelected && "bg-emerald-600 text-white hover:bg-emerald-600/90", // Ancienne condition
-                    // contactStatus === "Argumenté" && isSelected && "bg-emerald-700 text-white border-emerald-800 hover:bg-emerald-700/90" // Ancienne condition
-                    callEnded && !isSelected && "bg-emerald-600 text-white hover:bg-emerald-600/90", // Ligne verte si appel terminé
-                    callEnded && isSelected && "bg-emerald-700 text-white border-emerald-800 hover:bg-emerald-700/90", // Ligne verte plus foncée si appel terminé et sélectionné
-                    row.id === activeRowId ? "bg-muted" : "",
-                    contactInCallId && contactInCallId === row.original.id ? "opacity-50 pointer-events-none" : "" // Griser si en cours de traitement
+                    "flex absolute w-full",
+                    "duration-300",
+                    // Gérer le style de survol uniquement si la ligne n'est pas en appel
+                    (!(contactInCallId && contactInCallId === row.original.id) && !isSelected) && "hover:bg-muted/50",
+                    
+                    // Style quand la ligne est sélectionnée (et pas en appel)
+                    (isSelected && !(contactInCallId && contactInCallId === row.original.id)) && "border-l-4 border-primary bg-muted",
+                    
+                    // Style quand un appel est terminé pour cette ligne (non sélectionnée)
+                    (callEnded && !isSelected && !(contactInCallId && contactInCallId === row.original.id)) && "bg-emerald-600 text-white hover:bg-emerald-600/90",
+                    // Style quand un appel est terminé ET la ligne est sélectionnée (et pas en appel en cours)
+                    (callEnded && isSelected && !(contactInCallId && contactInCallId === row.original.id)) && "bg-emerald-700 text-white border-emerald-800 hover:bg-emerald-700/90",
+                    
+                    // Style spécifique pour la ligne en appel actif
+                    contactInCallId && contactInCallId === row.original.id && 
+                      "border-l-4 border-emerald-500 bg-emerald-700/30 text-white", // Pas d'opacity, pas de pointer-events-none
+
+                    // Fallback pour la ligne active si aucune des conditions ci-dessus n'est remplie (devrait être rare)
+                    // Si isSelected est vrai mais qu'une autre condition l'a déjà stylé, ce ne sera pas appliqué à cause de l'ordre.
+                    isSelected && !callEnded && !(contactInCallId && contactInCallId === row.original.id) && "bg-muted"
                   )}
                   style={{
-                    height: `${virtualRow.size}px`, // Hauteur dynamique de la ligne virtuelle
-                    transform: `translateY(${virtualRow.start}px)`, // Positionnement de la ligne virtuelle
+                    height: `48px`,
+                    transform: `translateY(${virtualRow.start}px)`,
                   }}
                 >
                   {row.getVisibleCells().map(cell => (

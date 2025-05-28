@@ -1,13 +1,15 @@
 "use client"
 
-import {
-  PolarAngleAxis,
-  PolarGrid,
-  PolarRadiusAxis,
-  RadialBar,
-  RadialBarChart,
-  Label
-} from "recharts"
+import * as React from 'react';
+import dynamic from 'next/dynamic';
+
+// Charger dynamiquement les composants Recharts nécessaires
+const DynamicRadialBarChart = dynamic(() => import('recharts').then(mod => mod.RadialBarChart), { ssr: false });
+const DynamicPolarAngleAxis = dynamic(() => import('recharts').then(mod => mod.PolarAngleAxis), { ssr: false });
+const DynamicPolarGrid = dynamic(() => import('recharts').then(mod => mod.PolarGrid), { ssr: false });
+const DynamicRadialBar = dynamic(() => import('recharts').then(mod => mod.RadialBar), { ssr: false });
+const DynamicPolarRadiusAxis = dynamic(() => import('recharts').then(mod => mod.PolarRadiusAxis), { ssr: false });
+const DynamicLabel = dynamic(() => import('recharts').then(mod => mod.Label), { ssr: false });
 
 import { ChartConfig, ChartContainer } from "@/components/ui/chart"
 
@@ -76,7 +78,7 @@ export function StatusProgressChart({ percentage, size = "sm", showLabel = true 
         className="aspect-square w-full h-full"
         style={{ height: config.height }}
       >
-        <RadialBarChart
+        <DynamicRadialBarChart
           data={chartData}
           startAngle={90}
           endAngle={-270}
@@ -94,21 +96,21 @@ export function StatusProgressChart({ percentage, size = "sm", showLabel = true 
               <stop offset="100%" stopColor="#F9F871" />
             </linearGradient>
           </defs>
-          <PolarAngleAxis 
+          <DynamicPolarAngleAxis 
             type="number" 
             domain={[0, 100]}
             angleAxisId={0} 
             tick={false} 
             axisLine={false} 
           />
-          <PolarGrid
+          <DynamicPolarGrid
             gridType="circle"
             radialLines={false}
             // Laisser Recharts gérer le polarRadius de PolarGrid ou le calculer précisément
             // Si innerRadius et outerRadius de RadialBarChart sont définis, PolarGrid s'ajuste souvent bien.
             // stroke="none" // Optionnel: si ChartContainer gère déjà la couleur de fond de la grille
           />
-          <RadialBar 
+          <DynamicRadialBar 
             dataKey="value" 
             angleAxisId={0}
             background={{ fill: "hsl(var(--muted))" }}
@@ -116,9 +118,9 @@ export function StatusProgressChart({ percentage, size = "sm", showLabel = true 
             // barSize est hérité de RadialBarChart ou peut être défini par donnée
           />
           {showLabel && (
-            <PolarRadiusAxis tick={false} tickLine={false} axisLine={false}>
-              <Label
-                content={({ viewBox }) => {
+            <DynamicPolarRadiusAxis tick={false} tickLine={false} axisLine={false}>
+              <DynamicLabel
+                content={({ viewBox }: any) => {
                   if (viewBox && "cx" in viewBox && "cy" in viewBox) {
                     return (
                       <text
@@ -139,9 +141,9 @@ export function StatusProgressChart({ percentage, size = "sm", showLabel = true 
                   }
                 }}
               />
-            </PolarRadiusAxis>
+            </DynamicPolarRadiusAxis>
           )}
-        </RadialBarChart>
+        </DynamicRadialBarChart>
       </ChartContainer>
     </div>
   )

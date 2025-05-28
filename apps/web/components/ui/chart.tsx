@@ -1,9 +1,14 @@
 "use client"
 
 import * as React from "react"
-import * as RechartsPrimitive from "recharts"
+import dynamic from 'next/dynamic';
 
 import { cn } from "@/lib/utils"
+
+// Charger dynamiquement les composants Recharts nécessaires
+const DynamicResponsiveContainer = dynamic(() => import('recharts').then(mod => mod.ResponsiveContainer), { ssr: false });
+const DynamicTooltip = dynamic(() => import('recharts').then(mod => mod.Tooltip), { ssr: false });
+const DynamicLegend = dynamic(() => import('recharts').then(mod => mod.Legend), { ssr: false });
 
 // Format: { THEME_NAME: CSS_SELECTOR }
 const THEMES = { light: "", dark: ".dark" } as const
@@ -42,9 +47,7 @@ function ChartContainer({
   ...props
 }: React.ComponentProps<"div"> & {
   config: ChartConfig
-  children: React.ComponentProps<
-    typeof RechartsPrimitive.ResponsiveContainer
-  >["children"]
+  children: React.ReactNode
 }) {
   const uniqueId = React.useId()
   const chartId = `chart-${id || uniqueId.replace(/:/g, "")}`
@@ -61,9 +64,9 @@ function ChartContainer({
         {...props}
       >
         <ChartStyle id={chartId} config={config} />
-        <RechartsPrimitive.ResponsiveContainer>
+        <DynamicResponsiveContainer>
           {children}
-        </RechartsPrimitive.ResponsiveContainer>
+        </DynamicResponsiveContainer>
       </div>
     </ChartContext.Provider>
   )
@@ -102,7 +105,9 @@ ${colorConfig
   )
 }
 
-const ChartTooltip = RechartsPrimitive.Tooltip
+// Utiliser des types génériques ou any pour les props venant de recharts
+type TooltipProps = any; // eslint-disable-line @typescript-eslint/no-explicit-any
+type LegendProps = any; // eslint-disable-line @typescript-eslint/no-explicit-any
 
 function ChartTooltipContent({
   active,
@@ -118,7 +123,7 @@ function ChartTooltipContent({
   color,
   nameKey,
   labelKey,
-}: React.ComponentProps<typeof RechartsPrimitive.Tooltip> &
+}: TooltipProps & // Utilisation du type générique/any
   React.ComponentProps<"div"> & {
     hideLabel?: boolean
     hideIndicator?: boolean
@@ -179,7 +184,7 @@ function ChartTooltipContent({
     >
       {!nestLabel ? tooltipLabel : null}
       <div className="grid gap-1.5">
-        {payload.map((item, index) => {
+        {payload.map((item: any, index: any) => {
           const key = `${nameKey || item.name || item.dataKey || "value"}`
           const itemConfig = getPayloadConfigFromPayload(config, item, key)
           const indicatorColor = color || item.payload.fill || item.color
@@ -248,8 +253,6 @@ function ChartTooltipContent({
   )
 }
 
-const ChartLegend = RechartsPrimitive.Legend
-
 function ChartLegendContent({
   className,
   hideIcon = false,
@@ -257,7 +260,7 @@ function ChartLegendContent({
   verticalAlign = "bottom",
   nameKey,
 }: React.ComponentProps<"div"> &
-  Pick<RechartsPrimitive.LegendProps, "payload" | "verticalAlign"> & {
+  Pick<LegendProps, "payload" | "verticalAlign"> & { // Utilisation du type générique/any
     hideIcon?: boolean
     nameKey?: string
   }) {
@@ -275,7 +278,7 @@ function ChartLegendContent({
         className
       )}
     >
-      {payload.map((item) => {
+      {payload.map((item: any) => {
         const key = `${nameKey || item.dataKey || "value"}`
         const itemConfig = getPayloadConfigFromPayload(config, item, key)
 
@@ -345,9 +348,9 @@ function getPayloadConfigFromPayload(
 
 export {
   ChartContainer,
-  ChartTooltip,
+  DynamicTooltip as ChartTooltip, // Exporter le composant chargé dynamiquement
   ChartTooltipContent,
-  ChartLegend,
+  DynamicLegend as ChartLegend, // Exporter le composant chargé dynamiquement
   ChartLegendContent,
   ChartStyle,
 }

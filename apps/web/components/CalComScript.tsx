@@ -25,7 +25,15 @@ export function CalComScript() {
           cal("ui", { 
             "theme": "dark", 
             "hideEventTypeDetails": false, 
-            "layout": "month_view" 
+            "layout": "month_view",
+            "cssVarsPerTheme": {
+              dark: {
+                "cal-brand-color": "#0ea5e9" // Couleur principale en mode sombre
+              },
+              light: {
+                "cal-brand-color": "#0284c7" // Couleur principale en mode clair
+              }
+            }
           });
           // console.log("[CalComScript] Configuration de l'UI Cal.com terminée avec succès.");
         } else {

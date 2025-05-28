@@ -9,7 +9,7 @@ import type { VariantProps } from 'class-variance-authority';
 import { buttonVariants } from "@/components/ui/button";
 import { 
   Phone, Mail, UploadCloud, DownloadCloud, Loader2, Trash2, CalendarDays,
-  BellRing, PhoneOff, Linkedin, /* Search, */ Globe, ServerCrash,
+  BellRing, /* PhoneOff, */ Linkedin, /* Search, */ Globe, ServerCrash,
   type LucideProps, MessageSquare
 } from 'lucide-react';
 import { useEffect, /* useRef, */ type ReactNode, useState, /* useCallback, */ startTransition } from 'react';
@@ -89,7 +89,7 @@ interface RibbonProps {
   activeContact?: Contact | null;
   onBookingCreated?: (bookingInfo: { date: string; time: string; }) => void;
   callFormAction: (payload: FormData) => void;
-  hangUpFormAction: (payload: FormData) => void;
+  // hangUpFormAction: (payload: FormData) => void; // Supprimé car nous retirons le bouton raccrocher
   contactInCallId?: string | null;
   onExportClick?: () => void; // Gardé
   // onRappelClick?: () => void; // Supprimé, géré par DateTimePicker
@@ -412,7 +412,6 @@ export const Ribbon = React.memo(React.forwardRef<HTMLDivElement, RibbonProps>((
     onRequestClearAllData,
     activeContact,
     callFormAction,
-    hangUpFormAction,
     contactInCallId,
     onExportClick,
     onBookingCreated,
@@ -584,19 +583,6 @@ export const Ribbon = React.memo(React.forwardRef<HTMLDivElement, RibbonProps>((
       // La logique pour définir l'appel en cours est maintenant dans page.tsx via le retour de callAction
     } else {
       toast.warn("Veuillez sélectionner un contact avec un numéro de téléphone pour appeler.");
-    }
-  };
-
-  const performHangUpAction = () => {
-    if (activeContact && activeContact.id && activeContact.id === contactInCallId) {
-      const formData = new FormData();
-      formData.append('contactId', activeContact.id);
-      startTransition(() => {
-        hangUpFormAction(formData);
-      });
-      // La logique pour réinitialiser l'appel en cours est dans page.tsx via le retour de hangUpCallAction
-    } else {
-      toast.warn("Aucun appel en cours pour ce contact ou contact non sélectionné.");
     }
   };
 
@@ -1012,7 +998,7 @@ Dimitri MOREL - Arcanis Conseil`;
           accept=".csv, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel"
       />
 
-      {/* Groupe 1: Appeler, Raccrocher */}
+      {/* Groupe 1: Appeler uniquement (Raccrocher a été supprimé) */}
       <div className="flex items-center gap-1 p-1 border border-muted rounded-md shadow-sm mb-1 sm:mb-0 w-full sm:w-auto">
         <RibbonButton 
           label="Appeler"
@@ -1022,31 +1008,9 @@ Dimitri MOREL - Arcanis Conseil`;
           tooltipContent="Appeler le contact sélectionné"
           className="flex-1 sm:flex-initial"
         />
-        <RibbonButton 
-          label="Raccrocher"
-          icon={PhoneOff} 
-          onClick={performHangUpAction}
-          disabled={!activeContact || !contactInCallId || contactInCallId !== activeContact?.id || isImportPending}
-          tooltipContent="Raccrocher l'appel en cours (si vous raccrochez depuis le téléphone, cliquez aussi ici pour enregistrer la durée d'appel)"
-          className={cn(
-            "flex-1 sm:flex-initial",
-            contactInCallId && activeContact?.id === contactInCallId ? "animate-pulse bg-red-500 text-white hover:bg-red-600 border-red-300" : ""
-          )}
-          variant={contactInCallId && activeContact?.id === contactInCallId ? "destructive" : "ghost"}
-        >
-          {contactInCallId && activeContact?.id === contactInCallId && (
-            <div className="flex flex-col items-center justify-center h-full relative">
-              <div className="absolute -top-2 -right-2 h-3 w-3 rounded-full bg-red-500 animate-ping"></div>
-              <div className="absolute -top-2 -right-2 h-3 w-3 rounded-full bg-red-500"></div>
-              <PhoneOff className="h-5 w-5 mb-1" />
-              <span className="text-xs">Raccrocher</span>
-              <span className="text-xs text-red-200 mt-1">Appel en cours</span>
-            </div>
-          )}
-        </RibbonButton>
       </div>
 
-        <RibbonSeparator />
+      <RibbonSeparator />
 
       {/* Groupe 2: Email, SMS, Rappel, Rendez-vous, Qualification */}
       <div className="flex items-center gap-1 p-1 border border-muted rounded-md shadow-sm mb-1 sm:mb-0 w-full sm:w-auto">

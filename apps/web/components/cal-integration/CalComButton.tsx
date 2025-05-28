@@ -78,6 +78,14 @@ export default function CalComButton({ activeContact, onBookingCreated }: CalCom
           theme: calUiConfig.theme,
           layout: calUiConfig.layout,
           hideEventTypeDetails: calUiConfig.hideEventTypeDetails,
+          cssVarsPerTheme: {
+            dark: {
+              "cal-brand-color": "#0ea5e9" // Couleur principale en mode sombre
+            },
+            light: {
+              "cal-brand-color": "#0284c7" // Couleur principale en mode clair
+            }
+          }
         });
         
         // Utiliser addEventListener au lieu de l'API "on" pour la compatibilité des types

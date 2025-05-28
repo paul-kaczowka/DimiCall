@@ -1,13 +1,14 @@
 "use client"
 
 import React from 'react';
-import {
-  Label,
-  PolarGrid,
-  PolarRadiusAxis,
-  RadialBar,
-  RadialBarChart,
-} from "recharts"
+import dynamic from 'next/dynamic';
+
+// Charger dynamiquement les composants Recharts nécessaires
+const DynamicRadialBarChart = dynamic(() => import('recharts').then(mod => mod.RadialBarChart), { ssr: false });
+const DynamicPolarGrid = dynamic(() => import('recharts').then(mod => mod.PolarGrid), { ssr: false });
+const DynamicRadialBar = dynamic(() => import('recharts').then(mod => mod.RadialBar), { ssr: false });
+const DynamicPolarRadiusAxis = dynamic(() => import('recharts').then(mod => mod.PolarRadiusAxis), { ssr: false });
+const DynamicLabel = dynamic(() => import('recharts').then(mod => mod.Label), { ssr: false });
 
 import { ChartConfig, ChartContainer } from "@/components/ui/chart" // Assurez-vous que ce chemin est correct
 
@@ -49,7 +50,7 @@ export const ScrollProgressRadialChart: React.FC<ScrollProgressRadialChartProps>
       className={`mx-auto aspect-square`}
       style={{ height: `${size}px`, width: `${size}px` }}
     >
-      <RadialBarChart
+      <DynamicRadialBarChart
         data={chartData}
         startAngle={90} // Commence en haut
         endAngle={90 + (360 * (displayPercentage / 100))} // Dynamique pour remplir le cercle
@@ -58,22 +59,22 @@ export const ScrollProgressRadialChart: React.FC<ScrollProgressRadialChartProps>
         barSize={size * 0.1} // Épaisseur de la barre
         margin={{ top: 0, right: 0, bottom: 0, left: 0 }}
       >
-        <PolarGrid
+        <DynamicPolarGrid
           gridType="circle"
           radialLines={false}
           stroke="none"
           className="first:fill-muted last:fill-background" // Couleurs de fond du cercle
           polarRadius={[size * 0.30, size * 0.25]} // Rayons pour les cercles de fond
         />
-        <RadialBar
+        <DynamicRadialBar
           dataKey="value"
           background
           cornerRadius={size * 0.05}
           // className="fill-primary" // Utilise la couleur définie dans chartData
         />
-        <PolarRadiusAxis tick={false} tickLine={false} axisLine={false}>
-          <Label
-            content={({ viewBox }: { viewBox?: { cx?: number; cy?: number; innerRadius?: number; outerRadius?: number; startAngle?: number; endAngle?: number; x?: number; y?: number; width?: number; height?: number } }) => {
+        <DynamicPolarRadiusAxis tick={false} tickLine={false} axisLine={false}>
+          <DynamicLabel
+            content={({ viewBox }: any) => { // Typage de viewBox en any pour simplicité ici
               if (viewBox && viewBox.cx != null && viewBox.cy != null) {
                 return (
                   <text
@@ -91,8 +92,8 @@ export const ScrollProgressRadialChart: React.FC<ScrollProgressRadialChartProps>
               return null;
             }}
           />
-        </PolarRadiusAxis>
-      </RadialBarChart>
+        </DynamicPolarRadiusAxis>
+      </DynamicRadialBarChart>
     </ChartContainer>
   )
 }

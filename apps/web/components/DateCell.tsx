@@ -57,20 +57,35 @@ export const DateCell: React.FC<DateCellProps> = ({
   const handleDateSelect = (selectedDate: Date | undefined) => {
     setDate(selectedDate);
     // Utiliser format de date-fns pour obtenir YYYY-MM-DD à partir des composantes locales de la date
-    const valueToSave = selectedDate ? format(selectedDate, 'yyyy-MM-dd') : null; 
-    onEditContact({
-      id: row.original.id,
-      [column.id]: valueToSave,
-    });
+    const valueToSave = selectedDate ? format(selectedDate, 'yyyy-MM-dd') : null;
+
+    // Vérifier si l'ID du contact est défini avant d'appeler onEditContact
+    if (row.original.id) {
+      onEditContact({
+        id: row.original.id,
+        [column.id]: valueToSave,
+      });
+    } else {
+      console.error("Impossible de mettre à jour le contact: ID manquant.");
+      // Optionally show a user-facing error message
+      // toast.error("Erreur: Impossible de sauvegarder la modification (ID contact manquant).");
+    }
     setIsPopoverOpen(false); // Fermer le popover après la sélection
   };
 
   const handleClearDate = () => {
     setDate(undefined);
-    onEditContact({
-      id: row.original.id,
-      [column.id]: null, // Envoyer null pour effacer la date
-    });
+    // Vérifier si l'ID du contact est défini avant d'appeler onEditContact
+    if (row.original.id) {
+      onEditContact({
+        id: row.original.id,
+        [column.id]: null, // Envoyer null pour effacer la date
+      });
+    } else {
+      console.error("Impossible de mettre à jour le contact: ID manquant pour effacer la date.");
+      // Optionally show a user-facing error message
+      // toast.error("Erreur: Impossible d'effacer la date (ID contact manquant).");
+    }
     setIsPopoverOpen(false); // S'assurer que le popover est fermé
   };
 
