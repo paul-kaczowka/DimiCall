@@ -562,7 +562,6 @@ export const ContactTable = React.memo(function ContactTableComponent({
                   data-state={isSelected ? "selected" : "none"}
                   className={cn(
                     "flex absolute w-full",
-                    "duration-300",
                     // Gérer le style de survol uniquement si la ligne n'est pas en appel
                     (!(contactInCallId && contactInCallId === row.original.id) && !isSelected) && "hover:bg-muted/50",
                     
