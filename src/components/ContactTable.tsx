@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo, useEffect } from 'react';
+import React, { useState, useCallback, useMemo, useEffect, useRef, useImperativeHandle, forwardRef } from 'react';
 import { Contact, ContactStatus, CallStates, Theme } from '../types';
 import { cn } from '../lib/utils';
 import { Button } from '@/components/ui/button';
@@ -20,7 +20,8 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { 
   Phone, User, Mail, MessageCircle, Clock, Calendar as CalendarIcon, FileText, ArrowUpDown, 
-  ArrowUp, ArrowDown, Trash2, Zap, Timer, Eye, EyeOff, Settings2, GripVertical, Move
+  ArrowUp, ArrowDown, Trash2, Zap, Timer, Eye, EyeOff, Settings2, GripVertical, Move, X,
+  Hash, FolderOpen
 } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog';
 import { formatPhoneNumber } from '../services/dataService';
@@ -40,15 +41,27 @@ interface ColumnConfig {
   defaultVisible: boolean;
 }
 
+// Configuration des colonnes avec largeurs optimisées
 const DEFAULT_COLUMNS: ColumnConfig[] = [
+  {
+    id: 'index',
+    key: 'prenom', // Pas vraiment utilisé, juste pour l'ordre
+    label: '#',
+    icon: Hash,
+    width: '60px',
+    minWidth: '60px',
+    canHide: false,
+    canSort: false,
+    defaultVisible: true,
+  },
   {
     id: 'prenom',
     key: 'prenom',
     label: 'Prénom',
     icon: User,
     width: 'auto',
-    minWidth: '100px',
-    canHide: true,
+    minWidth: '120px',
+    canHide: false,
     canSort: true,
     defaultVisible: true,
   },
@@ -58,9 +71,20 @@ const DEFAULT_COLUMNS: ColumnConfig[] = [
     label: 'Nom',
     icon: User,
     width: 'auto',
-    minWidth: '100px',
-    canHide: true,
+    minWidth: '120px',
+    canHide: false,
     canSort: true,
+    defaultVisible: true,
+  },
+  {
+    id: 'actions',
+    key: 'actions',
+    label: 'Actions',
+    icon: Settings2,
+    width: '120px',
+    minWidth: '120px',
+    canHide: false,
+    canSort: false,
     defaultVisible: true,
   },
   {
@@ -69,7 +93,7 @@ const DEFAULT_COLUMNS: ColumnConfig[] = [
     label: 'Téléphone',
     icon: Phone,
     width: 'auto',
-    minWidth: '120px',
+    minWidth: '160px',
     canHide: true,
     canSort: true,
     defaultVisible: true,
@@ -80,7 +104,7 @@ const DEFAULT_COLUMNS: ColumnConfig[] = [
     label: 'Mail',
     icon: Mail,
     width: 'auto',
-    minWidth: '150px',
+    minWidth: '200px',
     canHide: true,
     canSort: true,
     defaultVisible: true,
@@ -91,7 +115,7 @@ const DEFAULT_COLUMNS: ColumnConfig[] = [
     label: 'Statut',
     icon: FileText,
     width: 'auto',
-    minWidth: '120px',
+    minWidth: '140px',
     canHide: true,
     canSort: true,
     defaultVisible: true,
@@ -102,10 +126,10 @@ const DEFAULT_COLUMNS: ColumnConfig[] = [
     label: 'Commentaire',
     icon: MessageCircle,
     width: 'auto',
-    minWidth: '150px',
+    minWidth: '320px', // Augmenté de 250px à 320px pour éviter la troncature
     canHide: true,
     canSort: true,
-    defaultVisible: false,
+    defaultVisible: true,
   },
   {
     id: 'dateRappel',
@@ -113,10 +137,10 @@ const DEFAULT_COLUMNS: ColumnConfig[] = [
     label: 'Date Rappel',
     icon: CalendarIcon,
     width: 'auto',
-    minWidth: '120px',
+    minWidth: '140px',
     canHide: true,
     canSort: true,
-    defaultVisible: false,
+    defaultVisible: true,
   },
   {
     id: 'heureRappel',
@@ -124,10 +148,10 @@ const DEFAULT_COLUMNS: ColumnConfig[] = [
     label: 'Heure Rappel',
     icon: Clock,
     width: 'auto',
-    minWidth: '120px',
+    minWidth: '140px',
     canHide: true,
     canSort: true,
-    defaultVisible: false,
+    defaultVisible: true,
   },
   {
     id: 'dateRDV',
@@ -135,10 +159,10 @@ const DEFAULT_COLUMNS: ColumnConfig[] = [
     label: 'Date RDV',
     icon: CalendarIcon,
     width: 'auto',
-    minWidth: '120px',
+    minWidth: '140px',
     canHide: true,
     canSort: true,
-    defaultVisible: false,
+    defaultVisible: true,
   },
   {
     id: 'heureRDV',
@@ -146,10 +170,10 @@ const DEFAULT_COLUMNS: ColumnConfig[] = [
     label: 'Heure RDV',
     icon: Clock,
     width: 'auto',
-    minWidth: '120px',
+    minWidth: '140px',
     canHide: true,
     canSort: true,
-    defaultVisible: false,
+    defaultVisible: true,
   },
   {
     id: 'dateAppel',
@@ -157,10 +181,10 @@ const DEFAULT_COLUMNS: ColumnConfig[] = [
     label: 'Date Appel',
     icon: CalendarIcon,
     width: 'auto',
-    minWidth: '120px',
+    minWidth: '140px',
     canHide: true,
     canSort: true,
-    defaultVisible: false,
+    defaultVisible: true,
   },
   {
     id: 'heureAppel',
@@ -168,10 +192,10 @@ const DEFAULT_COLUMNS: ColumnConfig[] = [
     label: 'Heure Appel',
     icon: Clock,
     width: 'auto',
-    minWidth: '120px',
+    minWidth: '140px',
     canHide: true,
     canSort: true,
-    defaultVisible: false,
+    defaultVisible: true,
   },
   {
     id: 'dureeAppel',
@@ -179,20 +203,9 @@ const DEFAULT_COLUMNS: ColumnConfig[] = [
     label: 'Durée Appel',
     icon: Timer,
     width: 'auto',
-    minWidth: '120px',
+    minWidth: '140px',
     canHide: true,
     canSort: true,
-    defaultVisible: false,
-  },
-  {
-    id: 'actions',
-    key: 'actions',
-    label: 'Actions',
-    icon: Settings2,
-    width: '80px',
-    minWidth: '80px',
-    canHide: false,
-    canSort: false,
     defaultVisible: true,
   },
 ];
@@ -206,6 +219,13 @@ interface StatusComboBoxProps {
 }
 
 const StatusComboBox: React.FC<StatusComboBoxProps> = ({ value, onChange, theme }) => {
+  const [localValue, setLocalValue] = useState(value);
+  
+  // Synchroniser la valeur locale avec la prop quand elle change
+  useEffect(() => {
+    setLocalValue(value);
+  }, [value]);
+
   const getStatusConfig = (status: ContactStatus) => {
     switch (status) {
       case ContactStatus.NonDefini: 
@@ -266,17 +286,26 @@ const StatusComboBox: React.FC<StatusComboBoxProps> = ({ value, onChange, theme 
     }
   };
 
-  const config = getStatusConfig(value);
+  const handleStatusChange = (newStatus: ContactStatus) => {
+    setLocalValue(newStatus);
+    onChange(newStatus);
+  };
+
+  const config = getStatusConfig(localValue);
 
   return (
-    <Select value={value} onValueChange={(newValue) => onChange(newValue as ContactStatus)}>
+    <Select 
+      value={localValue} 
+      onValueChange={(newValue) => handleStatusChange(newValue as ContactStatus)}
+      key={`status-${localValue}`} // Force re-render quand la valeur change
+    >
       <SelectTrigger className="border-none bg-transparent p-0 h-auto">
         <div className={cn(
           "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border transition-colors",
           config.color
         )}>
           <div className={cn("w-1.5 h-1.5 rounded-full", config.dot)} />
-          {value}
+          {localValue}
         </div>
       </SelectTrigger>
       <SelectContent className="bg-popover border shadow-lg">
@@ -326,22 +355,22 @@ const CommentWidget: React.FC<CommentWidgetProps> = ({ value, onChange, theme })
   };
 
   const quickComments = [
-    "Intéressé", "Non disponible", "Rappeler plus tard", "Numéro incorrect",
+    "Accompagné", "Intéressé", "Non disponible", "Rappeler plus tard", "Numéro incorrect",
     "Pas de réponse", "Occupé", "RDV fixé", "Déjà client"
   ];
 
   return (
-    <div className="flex items-center space-x-1">
+    <div className="flex items-center space-x-1 w-full">
       <Input
         type="text"
         value={comment}
         onChange={(e) => setComment(e.target.value)}
         onBlur={handleBlur}
         placeholder="Commentaire..."
-        className={INPUT_BASE_CLASS}
+        className={`${INPUT_BASE_CLASS} flex-1 min-w-0`}
       />
       <Select onValueChange={insertQuickComment}>
-        <SelectTrigger className="h-6 w-6 p-0 border-none bg-transparent hover:bg-muted/50 rounded-sm">
+        <SelectTrigger className="h-6 w-6 p-0 border-none bg-transparent hover:bg-muted/50 rounded-sm flex-shrink-0">
           <Zap className="h-3 w-3 text-muted-foreground hover:text-primary transition-colors" />
         </SelectTrigger>
         <SelectContent className="bg-popover border shadow-lg">
@@ -368,6 +397,7 @@ const DateTimeCell: React.FC<DateTimeCellProps> = ({ value, type, onChange, them
   const [showInput, setShowInput] = useState(false);
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
+  const [isTimeOpen, setIsTimeOpen] = useState(false);
   const inputType = type === 'date' ? 'date' : 'time';
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -391,6 +421,13 @@ const DateTimeCell: React.FC<DateTimeCellProps> = ({ value, type, onChange, them
     }
   };
 
+  const handleClear = () => {
+    setCurrentValue('');
+    onChange('');
+    setIsCalendarOpen(false);
+    setIsTimeOpen(false);
+  };
+
   useEffect(() => {
     setCurrentValue(value);
   }, [value]);
@@ -411,34 +448,46 @@ const DateTimeCell: React.FC<DateTimeCellProps> = ({ value, type, onChange, them
     const displayValue = value ? new Date(value).toLocaleDateString('fr-FR') : '';
 
     return (
-      <Popover open={isCalendarOpen} onOpenChange={setIsCalendarOpen}>
-        <PopoverTrigger asChild>
+      <div className="flex items-center gap-1">
+        <Popover open={isCalendarOpen} onOpenChange={setIsCalendarOpen}>
+          <PopoverTrigger asChild>
+            <Button
+              variant="ghost"
+              className={cn(
+                "h-8 px-2 text-xs justify-start text-left font-normal flex-1",
+                !value && "text-muted-foreground",
+                INPUT_BASE_CLASS
+              )}
+            >
+              <CalendarIcon className="mr-2 h-3 w-3" />
+              {displayValue || "Sélectionner"}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-auto p-0" align="start">
+            <Calendar
+              mode="single"
+              selected={selectedDate || (value ? new Date(value) : undefined)}
+              onSelect={handleDateSelect}
+              initialFocus
+            />
+          </PopoverContent>
+        </Popover>
+        {value && (
           <Button
             variant="ghost"
-            className={cn(
-              "h-8 px-2 text-xs justify-start text-left font-normal",
-              !value && "text-muted-foreground",
-              INPUT_BASE_CLASS
-            )}
+            size="sm"
+            className="h-8 w-8 p-0 hover:bg-destructive/10 hover:text-destructive"
+            onClick={handleClear}
+            title="Supprimer la date"
           >
-            <CalendarIcon className="mr-2 h-3 w-3" />
-            {displayValue || "Sélectionner"}
+            <X className="h-3 w-3" />
           </Button>
-        </PopoverTrigger>
-        <PopoverContent className="w-auto p-0" align="start">
-          <Calendar
-            mode="single"
-            selected={selectedDate || (value ? new Date(value) : undefined)}
-            onSelect={handleDateSelect}
-            initialFocus
-          />
-        </PopoverContent>
-      </Popover>
+        )}
+      </div>
     );
   }
 
   if (type === 'time') {
-    const [isTimeOpen, setIsTimeOpen] = useState(false);
     
     const handleTimeSelect = (type: 'hour' | 'minute', timeValue: number) => {
       const parts = currentValue.split(':');
@@ -453,61 +502,74 @@ const DateTimeCell: React.FC<DateTimeCellProps> = ({ value, type, onChange, them
     const minutes = Array.from({ length: 60 }, (_, i) => i);
 
     return (
-      <Popover open={isTimeOpen} onOpenChange={setIsTimeOpen}>
-        <PopoverTrigger asChild>
+      <div className="flex items-center gap-1">
+        <Popover open={isTimeOpen} onOpenChange={setIsTimeOpen}>
+          <PopoverTrigger asChild>
+            <Button
+              variant="ghost"
+              className={cn(
+                "h-8 px-2 text-xs justify-start text-left font-normal flex-1",
+                !value && "text-muted-foreground",
+                INPUT_BASE_CLASS
+              )}
+            >
+              <Clock className="mr-2 h-3 w-3" />
+              {currentValue || "Heure"}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-auto p-4" align="start">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <div className="text-sm font-medium mb-2">Heures</div>
+                <ScrollArea className="h-40">
+                  <div className="grid gap-1">
+                    {hours.map(hour => (
+                      <Button
+                        key={hour}
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 text-xs justify-start"
+                        onClick={() => handleTimeSelect('hour', hour)}
+                      >
+                        {hour.toString().padStart(2, '0')}
+                      </Button>
+                    ))}
+                  </div>
+                </ScrollArea>
+              </div>
+              <div>
+                <div className="text-sm font-medium mb-2">Minutes</div>
+                <ScrollArea className="h-40">
+                  <div className="grid gap-1">
+                    {minutes.filter((_, i) => i % 5 === 0).map(minute => (
+                      <Button
+                        key={minute}
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 text-xs justify-start"
+                        onClick={() => handleTimeSelect('minute', minute)}
+                      >
+                        {minute.toString().padStart(2, '0')}
+                      </Button>
+                    ))}
+                  </div>
+                </ScrollArea>
+              </div>
+            </div>
+          </PopoverContent>
+        </Popover>
+        {value && (
           <Button
             variant="ghost"
-            className={cn(
-              "h-8 px-2 text-xs justify-start text-left font-normal",
-              !value && "text-muted-foreground",
-              INPUT_BASE_CLASS
-            )}
+            size="sm"
+            className="h-8 w-8 p-0 hover:bg-destructive/10 hover:text-destructive"
+            onClick={handleClear}
+            title="Supprimer l'heure"
           >
-            <Clock className="mr-2 h-3 w-3" />
-            {currentValue || "Heure"}
+            <X className="h-3 w-3" />
           </Button>
-        </PopoverTrigger>
-        <PopoverContent className="w-auto p-4" align="start">
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <div className="text-sm font-medium mb-2">Heures</div>
-              <ScrollArea className="h-40">
-                <div className="grid gap-1">
-                  {hours.map(hour => (
-                    <Button
-                      key={hour}
-                      variant="ghost"
-                      size="sm"
-                      className="h-8 text-xs justify-start"
-                      onClick={() => handleTimeSelect('hour', hour)}
-                    >
-                      {hour.toString().padStart(2, '0')}
-                    </Button>
-                  ))}
-                </div>
-              </ScrollArea>
-            </div>
-            <div>
-              <div className="text-sm font-medium mb-2">Minutes</div>
-              <ScrollArea className="h-40">
-                <div className="grid gap-1">
-                  {minutes.filter((_, i) => i % 5 === 0).map(minute => (
-                    <Button
-                      key={minute}
-                      variant="ghost"
-                      size="sm"
-                      className="h-8 text-xs justify-start"
-                      onClick={() => handleTimeSelect('minute', minute)}
-                    >
-                      {minute.toString().padStart(2, '0')}
-                    </Button>
-                  ))}
-                </div>
-              </ScrollArea>
-            </div>
-          </div>
-        </PopoverContent>
-      </Popover>
+        )}
+      </div>
     );
   }
 
@@ -593,6 +655,11 @@ const SortableHeader: React.FC<SortableHeaderProps> = ({
 };
 
 // Composant principal de la table
+// Interface pour les méthodes exposées via ref
+export interface ContactTableRef {
+  scrollToContact: (contactId: string) => void;
+}
+
 interface ContactTableProps {
   contacts: Contact[];
   callStates: CallStates;
@@ -606,9 +673,10 @@ interface ContactTableProps {
   columnHeaders: string[];
   contactDataKeys: (keyof Contact | 'actions' | null)[];
   onToggleColumnVisibility: (header: string) => void;
+  availableColumns?: string[];
 }
 
-export const ContactTable: React.FC<ContactTableProps> = ({
+export const ContactTable = forwardRef<ContactTableRef, ContactTableProps>(({
   contacts,
   callStates,
   onSelectContact,
@@ -621,7 +689,8 @@ export const ContactTable: React.FC<ContactTableProps> = ({
   columnHeaders,
   contactDataKeys,
   onToggleColumnVisibility,
-}) => {
+  availableColumns = [],
+}, ref) => {
   const [editingCell, setEditingCell] = useState<{ contactId: string; field: keyof Contact } | null>(null);
   const [editValue, setEditValue] = useState('');
   const [sortConfig, setSortConfig] = useState<{ key: keyof Contact | null; direction: SortDirection }>({
@@ -629,20 +698,90 @@ export const ContactTable: React.FC<ContactTableProps> = ({
     direction: null,
   });
 
-  // Configuration des colonnes locales avec state
-  const [columnOrder, setColumnOrder] = useState<string[]>(
-    DEFAULT_COLUMNS.map(col => col.id)
-  );
-  const [columnVisibility, setColumnVisibility] = useState<Record<string, boolean>>(
-    DEFAULT_COLUMNS.reduce((acc, col) => {
-      acc[col.id] = col.defaultVisible;
-      return acc;
-    }, {} as Record<string, boolean>)
-  );
+  // Utiliser les colonnes transmises par le parent au lieu du système interne
+  const [columnOrder, setColumnOrder] = useState<string[]>([]);
+  
+  // Créer des configurations de colonnes dynamiques basées sur les props
+  const dynamicColumns = useMemo((): ColumnConfig[] => {
+    return columnHeaders.map((header, index) => {
+      const dataKey = contactDataKeys[index];
+      const headerToIdMap: Record<string, string> = {
+        '#': 'numeroLigne',
+        'Prénom': 'prenom',
+        'Nom': 'nom',
+        'Téléphone': 'telephone',
+        'Mail': 'email',
+        'Source': 'source',
+        'Statut': 'statut',
+        'Commentaire': 'commentaire',
+        'Date Rappel': 'dateRappel',
+        'Heure Rappel': 'heureRappel',
+        'Date RDV': 'dateRDV',
+        'Heure RDV': 'heureRDV',
+        'Date Appel': 'dateAppel',
+        'Heure Appel': 'heureAppel',
+        'Durée Appel': 'dureeAppel',
+        'Sexe': 'sexe',
+        'Don': 'don',
+        'Qualité': 'qualite',
+        'Type': 'type',
+        'Date': 'date',
+        'UID': 'uid',
+        'Actions': 'actions'
+      };
+
+      const iconMap: Record<string, React.ComponentType<any>> = {
+        '#': Hash,
+        'Prénom': User,
+        'Nom': User,
+        'Téléphone': Phone,
+        'Mail': Mail,
+        'Source': FolderOpen,
+        'Statut': FileText,
+        'Commentaire': MessageCircle,
+        'Date Rappel': CalendarIcon,
+        'Heure Rappel': Clock,
+        'Date RDV': CalendarIcon,
+        'Heure RDV': Clock,
+        'Date Appel': CalendarIcon,
+        'Heure Appel': Clock,
+        'Durée Appel': Timer,
+        'Sexe': User,
+        'Don': User,
+        'Qualité': User,
+        'Type': User,
+        'Date': CalendarIcon,
+        'UID': User,
+        'Actions': Settings2
+      };
+
+      return {
+        id: headerToIdMap[header] || header.toLowerCase(),
+        key: (dataKey || 'actions') as keyof Contact | 'actions',
+        label: header,
+        icon: iconMap[header] || FileText,
+        width: header === 'Actions' ? '80px' : 'auto',
+        minWidth: header === 'Actions' ? '80px' : header === '#' ? '60px' : header.includes('Téléphone') || header.includes('Mail') ? '150px' : '100px',
+        canHide: !['#', 'Prénom', 'Nom', 'Actions'].includes(header),
+        canSort: header !== 'Actions',
+        defaultVisible: true,
+      };
+    });
+  }, [columnHeaders, contactDataKeys]);
+
+  // Initialiser l'ordre des colonnes quand dynamicColumns change
+  useEffect(() => {
+    if (dynamicColumns.length > 0) {
+      setColumnOrder(dynamicColumns.map(col => col.id));
+    }
+  }, [dynamicColumns]);
 
   // État pour le drag & drop
   const [draggedColumn, setDraggedColumn] = useState<string | null>(null);
   const [dragOverColumn, setDragOverColumn] = useState<string | null>(null);
+
+  // Ref pour le conteneur de scroll
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   // Gestion du tri
   const handleSort = useCallback((key: keyof Contact) => {
@@ -679,6 +818,68 @@ export const ContactTable: React.FC<ContactTableProps> = ({
     });
   }, [contacts, sortConfig]);
 
+  // Fonction de scroll automatique vers un contact
+  const scrollToContact = useCallback((contactId: string) => {
+    if (!scrollContainerRef.current) return;
+
+    // Essayer d'abord de trouver l'élément DOM directement par l'attribut data-contact-id
+    const contactRow = scrollContainerRef.current.querySelector(`[data-contact-id="${contactId}"]`);
+    
+    if (contactRow) {
+      // Utiliser scrollIntoView pour un scroll plus précis
+      contactRow.scrollIntoView({
+        behavior: 'smooth',
+        block: 'center', // Centre la ligne dans la vue
+        inline: 'nearest'
+      });
+    } else {
+      // Fallback: utiliser l'ancienne méthode basée sur l'index
+      const contactIndex = sortedContacts.findIndex(contact => contact.id === contactId);
+      if (contactIndex === -1) return;
+
+      // Calculer la position de la ligne (hauteur estimée par ligne: ~40px)
+      const rowHeight = 40;
+      const targetPosition = contactIndex * rowHeight;
+      
+      // Obtenir les dimensions du conteneur
+      const container = scrollContainerRef.current;
+      const containerHeight = container.clientHeight;
+      const scrollTop = container.scrollTop;
+      
+      // Vérifier si le contact est déjà visible
+      const isVisible = targetPosition >= scrollTop && 
+                       targetPosition <= scrollTop + containerHeight - rowHeight;
+      
+      if (!isVisible) {
+        // Scroll vers le contact avec un peu de marge pour qu'il soit bien visible
+        const margin = 80;
+        const scrollPosition = Math.max(0, targetPosition - margin);
+        
+        container.scrollTo({
+          top: scrollPosition,
+          behavior: 'smooth'
+        });
+      }
+    }
+  }, [sortedContacts]);
+
+  // Exposer la fonction de scroll via ref
+  useImperativeHandle(ref, () => ({
+    scrollToContact
+  }), [scrollToContact]);
+
+  // Scroll automatique quand le contact sélectionné change
+  useEffect(() => {
+    if (selectedContactId) {
+      // Délai pour laisser le temps au DOM de se mettre à jour
+      const timeoutId = setTimeout(() => {
+        scrollToContact(selectedContactId);
+      }, 100);
+      
+      return () => clearTimeout(timeoutId);
+    }
+  }, [selectedContactId, scrollToContact]);
+
   // Gestion de l'édition
   const handleCellDoubleClick = (contactId: string, columnKey: keyof Contact, currentValue: any) => {
     if (columnKey === 'statut') return; // Géré par le select
@@ -706,134 +907,172 @@ export const ContactTable: React.FC<ContactTableProps> = ({
     }
   };
 
-  // Toggle visibilité des colonnes
+  // Toggle visibilité des colonnes - maintenant délégué au parent
   const handleToggleColumnVisibility = (columnId: string, visible: boolean) => {
-    setColumnVisibility(prev => ({
-      ...prev,
-      [columnId]: visible
-    }));
+    // Trouver le header correspondant à ce columnId
+    const column = dynamicColumns.find(col => col.id === columnId);
+    if (column) {
+      onToggleColumnVisibility(column.label);
+    }
   };
 
   // Rendu du contenu des cellules
   const renderCellContent = (contact: Contact, column: ColumnConfig) => {
-    const { key: columnKey } = column;
-    const isEditing = editingCell?.contactId === contact.id && editingCell?.field === columnKey;
-
-    if (columnKey === 'actions') {
+    const columnKey = column.key as keyof Contact;
+    
+    // Gestion spéciale pour les colonnes virtuelles
+    if (column.id === 'index') {
+      const index = contacts.findIndex(c => c.id === contact.id) + 1;
       return (
-        <div className="flex items-center gap-1">
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-6 w-6 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
-            onClick={() => onDeleteContact(contact.id)}
-          >
-            <Trash2 className="h-3 w-3" />
-          </Button>
-        </div>
+        <span className="cursor-pointer hover:text-primary transition-colors font-medium text-center block">
+          {index}
+        </span>
       );
     }
-
-    if (isEditing && columnKey !== 'statut') {
+    
+    if (column.id === 'actions') {
       return (
-        <Input
-          value={editValue}
-          onChange={(e) => setEditValue(e.target.value)}
-          onBlur={handleEditCommit}
-          onKeyDown={handleEditKeyDown}
-          className={INPUT_BASE_CLASS}
-          autoFocus
-        />
+        <span className="cursor-pointer hover:text-primary transition-colors text-center block">
+          {contact.telephone ? formatPhoneNumber(contact.telephone) : 'N/A'}
+        </span>
       );
     }
 
     const value = contact[columnKey];
 
     switch (columnKey) {
-             case 'telephone':
-         return (
-           <span
-             className="cursor-pointer hover:text-primary transition-colors"
-             onDoubleClick={() => handleCellDoubleClick(contact.id, columnKey, value)}
-           >
-             {formatPhoneNumber(String(value || ''))}
-           </span>
-         );
+      case 'prenom':
+      case 'nom':
+        return (
+          <span className="cursor-pointer hover:text-primary transition-colors font-medium">
+            {value || 'N/A'}
+          </span>
+        );
+        
+      case 'telephone':
+        return (
+          <span className="cursor-pointer hover:text-primary transition-colors font-mono">
+            {value ? formatPhoneNumber(value as string) : 'N/A'}
+          </span>
+        );
 
-       case 'email':
-         return (
-           <span
-             className="cursor-pointer hover:text-primary transition-colors truncate"
-             onDoubleClick={() => handleCellDoubleClick(contact.id, columnKey, value)}
-             title={String(value || '')}
-           >
-             {value || 'N/A'}
-           </span>
-         );
+      case 'email':
+        return (
+          <span 
+            className="cursor-pointer hover:text-primary transition-colors truncate" 
+            title={value as string}
+          >
+            {value || 'N/A'}
+          </span>
+        );
+
+      case 'source':
+        return (
+          <span className="cursor-pointer hover:text-primary transition-colors">
+            {value || 'N/A'}
+          </span>
+        );
 
       case 'statut':
+        const currentStatus = (value as ContactStatus) || 'Non défini';
         return (
           <StatusComboBox
-            value={value as ContactStatus}
-            onChange={(newStatus) => onUpdateContact({ id: contact.id, statut: newStatus })}
+            value={currentStatus}
+            onChange={(newStatus) => {
+              onUpdateContact({
+                id: contact.id,
+                statut: newStatus
+              });
+            }}
             theme={theme}
           />
         );
 
       case 'commentaire':
-                 return (
-           <CommentWidget
-             value={String(value || '')}
-             onChange={(newComment) => onUpdateContact({ id: contact.id, commentaire: newComment })}
-             theme={theme}
-           />
-         );
+        return (
+          <CommentWidget
+            value={(value as string) || ''}
+            onChange={(newComment) => {
+              onUpdateContact({
+                id: contact.id,
+                commentaire: newComment
+              });
+            }}
+            theme={theme}
+          />
+        );
 
-       case 'dateRappel':
-       case 'dateRDV':
-       case 'dateAppel':
-         return (
-           <DateTimeCell
-             value={String(value || '')}
-             type="date"
-             onChange={(newValue) => onUpdateContact({ id: contact.id, [columnKey]: newValue })}
-             theme={theme}
-           />
-         );
+      case 'dateRappel':
+      case 'dateRDV':
+      case 'dateAppel':
+        return (
+          <DateTimeCell
+            value={(value as string) || ''}
+            type="date"
+            onChange={(newDate) => {
+              onUpdateContact({
+                id: contact.id,
+                [columnKey]: newDate
+              });
+            }}
+            theme={theme}
+          />
+        );
 
-       case 'heureRappel':
-       case 'heureRDV':
-       case 'heureAppel':
-       case 'dureeAppel':
-         return (
-           <DateTimeCell
-             value={String(value || '')}
-             type="time"
-             onChange={(newValue) => onUpdateContact({ id: contact.id, [columnKey]: newValue })}
-             theme={theme}
-           />
-         );
+      case 'heureRappel':
+      case 'heureRDV':
+      case 'heureAppel':
+        return (
+          <DateTimeCell
+            value={(value as string) || ''}
+            type="time"
+            onChange={(newTime) => {
+              onUpdateContact({
+                id: contact.id,
+                [columnKey]: newTime
+              });
+            }}
+            theme={theme}
+          />
+        );
+
+      case 'dureeAppel':
+        return (
+          <span className="cursor-pointer hover:text-primary transition-colors text-center block">
+            {value || 'N/A'}
+          </span>
+        );
 
       default:
         return (
-          <span
-            className="cursor-pointer hover:text-primary transition-colors"
-            onDoubleClick={() => handleCellDoubleClick(contact.id, columnKey, value)}
-          >
+          <span className="cursor-pointer hover:text-primary transition-colors">
             {value || 'N/A'}
           </span>
         );
     }
   };
 
-  const hiddenColumns = DEFAULT_COLUMNS.filter(col => col.canHide && !columnVisibility[col.id]);
-  
-  // Colonnes visibles ordonnées
+  // Colonnes visibles basées sur les props du parent
   const visibleOrderedColumns = useMemo(() => {
-    return columnOrder
-      .map(id => DEFAULT_COLUMNS.find(col => col.id === id))
-      .filter((col): col is ColumnConfig => col !== undefined && columnVisibility[col.id]);
-  }, [columnOrder, columnVisibility]);
+    const result = columnOrder
+      .map(id => dynamicColumns.find(col => col.id === id))
+      .filter((col): col is ColumnConfig => {
+        if (!col) return false;
+        // Utiliser visibleColumns depuis les props pour déterminer la visibilité
+        return visibleColumns[col.label] !== false;
+      });
+    
+    // Debug temporaire
+    if (result.length !== columnOrder.length) {
+      console.log('🔧 Colonnes filtrées:', {
+        'Toutes colonnes': dynamicColumns.map(c => c.label),
+        'Visibilité': visibleColumns,
+        'Colonnes affichées': result.map(c => c.label)
+      });
+    }
+    
+    return result;
+  }, [columnOrder, dynamicColumns, visibleColumns]);
   
   const visibleColumnsCount = visibleOrderedColumns.length;
 
@@ -890,72 +1129,18 @@ export const ContactTable: React.FC<ContactTableProps> = ({
   };
 
   return (
-    <div className="space-y-4">
-      {/* Contrôles de la table */}
-      <div className="flex items-center justify-end">
-        {/* Menu de gestion des colonnes */}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="outline" size="sm" className="h-8">
-              <Settings2 className="h-4 w-4 mr-2" />
-              Colonnes
-              {hiddenColumns.length > 0 && (
-                <Badge variant="secondary" className="ml-2 h-4 px-1 text-xs">
-                  {hiddenColumns.length}
-                </Badge>
-              )}
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-56 bg-background/95 backdrop-blur-sm border shadow-lg">
-            <DropdownMenuLabel className="flex items-center gap-2">
-              <Eye className="h-4 w-4" />
-              Gestion des colonnes
-            </DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            
-            {DEFAULT_COLUMNS.filter(col => col.canHide).map(column => (
-              <DropdownMenuCheckboxItem
-                key={column.id}
-                className="flex items-center gap-2"
-                checked={columnVisibility[column.id]}
-                onCheckedChange={(checked) => handleToggleColumnVisibility(column.id, checked)}
-              >
-                <column.icon className="h-4 w-4" />
-                <span className="flex-1">{column.label}</span>
-              </DropdownMenuCheckboxItem>
-            ))}
+    <div className="contact-table-container space-y-4">
 
-            {hiddenColumns.length > 0 && (
-              <>
-                <DropdownMenuSeparator />
-                <DropdownMenuCheckboxItem
-                  className="flex items-center gap-2 text-primary"
-                  checked={false}
-                  onCheckedChange={() => {
-                    const newVisibility = { ...columnVisibility };
-                    DEFAULT_COLUMNS.filter(col => col.canHide).forEach(col => {
-                      newVisibility[col.id] = true;
-                    });
-                    setColumnVisibility(newVisibility);
-                  }}
-                >
-                  <Eye className="h-4 w-4" />
-                  Afficher toutes les colonnes
-                </DropdownMenuCheckboxItem>
-              </>
-            )}
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
-
-      {/* Table avec drag and drop */}
+      {/* Table unique avec en-tête sticky pour alignement correct */}
       <div className="border rounded-lg overflow-hidden">
-        {/* En-tête séparé et sticky */}
-        <div className="sticky top-0 z-[101] bg-background border-b border-border">
-          <div className="overflow-hidden">
-            <Table style={{ borderCollapse: 'separate', borderSpacing: 0 }}>
-              <TableHeader>
-                <TableRow className="hover:bg-transparent">
+        <div
+          ref={scrollContainerRef}
+          className="h-[800px] overflow-auto scrollbar-hidden relative bg-background"
+        >
+          <Table className="relative w-full table-auto" style={{ borderCollapse: 'separate', borderSpacing: 0 }}>
+            {/* En-tête sticky */}
+            <TableHeader className="sticky top-0 z-[101] bg-background">
+              <TableRow className="hover:bg-transparent border-b">
                  {visibleOrderedColumns.map(column => (
                     <TableHead
                       key={column.id}
@@ -967,7 +1152,7 @@ export const ContactTable: React.FC<ContactTableProps> = ({
                       onDrop={(e) => handleDrop(e, column.id)}
                       onDragEnd={handleDragEnd}
                       className={cn(
-                        "text-foreground h-10 align-middle whitespace-nowrap px-2 py-1.5 text-left font-medium text-xs select-none transition-all duration-200",
+                        "text-foreground h-10 align-middle whitespace-nowrap px-2 py-1.5 text-center font-medium text-xs select-none transition-all duration-200",
                         column.canSort ? "cursor-pointer hover:bg-muted" : "",
                         draggedColumn === column.id && "opacity-50 scale-95",
                         dragOverColumn === column.id && "border-l-4 border-l-primary bg-primary/10",
@@ -988,9 +1173,9 @@ export const ContactTable: React.FC<ContactTableProps> = ({
                         }
                       }}
                     >
-                      <div className="flex items-center gap-1">
+                      <div className="flex items-center justify-center gap-1">
                         <GripVertical className="w-3 h-3 text-muted-foreground/50 hover:text-muted-foreground transition-colors" />
-                        <span className="truncate">{column.label}</span>
+                        <span className="truncate flex-1 text-center">{column.label}</span>
                         {column.canSort && sortConfig.key === column.key && (
                           <>
                             {sortConfig.direction === 'asc' && <ArrowUp className="w-3 h-3 text-muted-foreground/50" />}
@@ -1005,19 +1190,9 @@ export const ContactTable: React.FC<ContactTableProps> = ({
                     </TableHead>
                  ))}
                 </TableRow>
-              </TableHeader>
-            </Table>
-          </div>
-        </div>
-        
-        {/* Corps du tableau avec scroll */}
-        <div
-          className="h-[740px] overflow-auto hide-scrollbar relative bg-background"
-          style={{
-            // CRITICAL: Container must allow scrolling for sticky to work
-          }}
-        >
-          <Table className="relative w-full" style={{ borderCollapse: 'separate', borderSpacing: 0 }}>
+            </TableHeader>
+            
+            {/* Corps du tableau */}
             <TableBody>
               {sortedContacts.map((contact, contactIndex) => {
                 const isSelected = selectedContactId === contact.id;
@@ -1027,6 +1202,7 @@ export const ContactTable: React.FC<ContactTableProps> = ({
                 return (
                   <TableRow
                     key={contact.id}
+                    data-contact-id={contact.id}
                     className={cn(
                       "hover:bg-muted/50 cursor-pointer transition-none",
                       isSelected && "bg-blue-100 dark:bg-blue-900/50 hover:bg-blue-200 dark:hover:bg-blue-900/60",
@@ -1038,15 +1214,17 @@ export const ContactTable: React.FC<ContactTableProps> = ({
                       <TableCell
                         key={column.id}
                         className={cn(
-                          "px-2 py-1.5 text-xs",
+                          "px-2 py-1.5 text-xs text-center align-middle",
                           column.minWidth && `min-w-[${column.minWidth}]`
                         )}
                         style={{ 
                           width: column.width,
-                          minWidth: column.minWidth 
+                          minWidth: column.minWidth
                         }}
                       >
-                        {renderCellContent(contact, column)}
+                        <div className="flex items-center justify-center min-h-[32px]">
+                          {renderCellContent(contact, column)}
+                        </div>
                       </TableCell>
                    ))}
                   </TableRow>
@@ -1066,4 +1244,6 @@ export const ContactTable: React.FC<ContactTableProps> = ({
       )}
     </div>
   );
-};
+});
+
+ContactTable.displayName = 'ContactTable';

@@ -18,22 +18,23 @@ import { Input as ShadcnInput } from './ui/input';
 interface EmailDialogProps {
   isOpen: boolean;
   onClose: () => void;
-  contactName: string;
-  contactEmail: string;
+  contact: Contact | null;
   showNotification: (type: 'success' | 'error' | 'info', message: string, duration?: number) => void;
 }
 
-const EmailDialog: React.FC<EmailDialogProps> = ({ isOpen, onClose, contactName, contactEmail, showNotification }) => {
+const EmailDialog: React.FC<EmailDialogProps> = ({ isOpen, onClose, contact, showNotification }) => {
   const [emailType, setEmailType] = useState<EmailType>(EmailType.PremierContact);
   const [civility, setCivility] = useState<Civility>(Civility.Monsieur);
 
+  if (!contact) return null;
+
   const handleGenerateEmail = () => {
-    if (!contactEmail || !contactEmail.includes('@')) {
+    if (!contact.email || !contact.email.includes('@')) {
       showNotification('error', 'Adresse email invalide ou manquante');
       return;
     }
 
-    const emailUrl = generateGmailComposeUrl(contactEmail, contactName, emailType, civility);
+    const emailUrl = generateGmailComposeUrl(contact, emailType, civility);
     
     try {
       window.open(emailUrl, '_blank');
@@ -62,10 +63,10 @@ const EmailDialog: React.FC<EmailDialogProps> = ({ isOpen, onClose, contactName,
       <div className="space-y-4">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium mb-1 text-slate-900 dark:text-white">Contact</label>
-            <div className="p-2 bg-slate-100 dark:bg-slate-800 rounded border text-sm text-slate-900 dark:text-white">
-              <div><strong>Nom:</strong> {contactName}</div>
-              <div><strong>Email:</strong> {contactEmail}</div>
+            <label className="block text-sm font-medium mb-1 text-foreground">Contact</label>
+            <div className="p-2 bg-muted text-muted-foreground rounded border text-sm">
+              <div><strong>Nom:</strong> {contact.prenom} {contact.nom}</div>
+              <div><strong>Email:</strong> {contact.email}</div>
             </div>
           </div>
           <div className="space-y-3">
@@ -86,9 +87,9 @@ const EmailDialog: React.FC<EmailDialogProps> = ({ isOpen, onClose, contactName,
           </div>
         </div>
         
-        <div className="bg-slate-100 dark:bg-slate-800 p-3 rounded text-sm text-slate-900 dark:text-white">
+        <div className="bg-muted text-muted-foreground p-3 rounded text-sm">
           <strong>Aperçu:</strong> Email {emailTypeOptions.find(opt => opt.value === emailType)?.label} 
-          pour {civilityOptions.find(opt => opt.value === civility)?.label} {contactName}
+          pour {civilityOptions.find(opt => opt.value === civility)?.label} {contact.prenom} {contact.nom}
         </div>
         
         <div className="flex justify-end space-x-3 pt-4">
@@ -136,6 +137,40 @@ const RappelDialog: React.FC<RappelDialogProps> = ({ isOpen, onClose, contact, o
   );
 };
 
+interface RendezVousDialogProps {
+  isOpen: boolean;
+  onClose: () => void;
+  contact: Contact;
+  onSave: (date: string, time: string) => void;
+}
+
+const RendezVousDialog: React.FC<RendezVousDialogProps> = ({ isOpen, onClose, contact, onSave }) => {
+  const [date, setDate] = useState(contact?.dateRDV || '');
+  const [time, setTime] = useState(contact?.heureRDV || '');
+
+  const handleSave = () => {
+    onSave(date, time);
+  };
+
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} title="Programmer un Rendez-vous" size="sm">
+      <div className="space-y-4">
+        <p className="text-sm text-muted-foreground">
+          Contact: <strong>{contact?.prenom} {contact?.nom}</strong>
+        </p>
+        <div className="grid grid-cols-2 gap-4">
+          <Input value={date} onChange={(e) => setDate(e.target.value)} placeholder="YYYY-MM-DD" type="date" />
+          <Input value={time} onChange={(e) => setTime(e.target.value)} placeholder="HH:mm" type="time" />
+        </div>
+        <div className="flex justify-end space-x-3 pt-4">
+          <Button variant="ghost" onClick={onClose}>Annuler</Button>
+          <Button variant="primary" onClick={handleSave}>Sauvegarder</Button>
+        </div>
+      </div>
+    </Modal>
+  );
+};
+
 interface QualificationDialogProps {
   isOpen: boolean;
   onClose: () => void;
@@ -144,15 +179,23 @@ interface QualificationDialogProps {
 }
 
 const QualificationDialog: React.FC<QualificationDialogProps> = ({ isOpen, onClose, onSave, theme }) => {
-  const [statutMarital, setStatutMarital] = useState<QualificationStatutMarital>(QualificationStatutMarital.Marie);
-  const [situationPro, setSituationPro] = useState<QualificationSituationPro>(QualificationSituationPro.CDI);
+  const [statutMarital, setStatutMarital] = useState<string>('');
+  const [situationPro, setSituationPro] = useState<string>('');
   const [revenus, setRevenus] = useState('');
   const [charges, setCharges] = useState('');
   const [resultat, setResultat] = useState('');
   const [commentaire, setCommentaire] = useState('');
 
-  const statutMaritalOptions = Object.values(QualificationStatutMarital).map(s => ({value: s, label: s}));
-  const situationProOptions = Object.values(QualificationSituationPro).map(s => ({value: s, label: s}));
+  const statutMaritalOptions = [
+    { value: '', label: 'Sélectionner...' },
+    { value: 'reset', label: '❌ Réinitialiser' },
+    ...Object.values(QualificationStatutMarital).map(s => ({value: s, label: s}))
+  ];
+  const situationProOptions = [
+    { value: '', label: 'Sélectionner...' },
+    { value: 'reset', label: '❌ Réinitialiser' },
+    ...Object.values(QualificationSituationPro).map(s => ({value: s, label: s}))
+  ];
 
   useEffect(() => {
     const rev = parseFloat(revenus) || 0;
@@ -164,13 +207,57 @@ const QualificationDialog: React.FC<QualificationDialogProps> = ({ isOpen, onClo
     } else {
       setResultat('N/A');
     }
-    const defaultComment = `Qualification: Statut marital: ${statutMarital}, Situation pro.: ${situationPro}. Revenus foyer: ${rev}€, Charges foyer: ${chg}€. Résultat calculé: ${calculatedResult.toFixed(2)}.`;
-    setCommentaire(defaultComment);
+    
+    // Générer le commentaire en excluant les valeurs non définies
+    const commentParts: string[] = ['Qualification:'];
+    
+    if (statutMarital && statutMarital !== 'reset') {
+      commentParts.push(`Statut marital: ${statutMarital}`);
+    }
+    
+    if (situationPro && situationPro !== 'reset') {
+      commentParts.push(`Situation pro.: ${situationPro}`);
+    }
+    
+    if (rev > 0) {
+      commentParts.push(`Revenus foyer: ${rev}€`);
+    }
+    
+    if (chg > 0) {
+      commentParts.push(`Charges foyer: ${chg}€`);
+    }
+    
+    if (rev > 0 && chg > 0) {
+      commentParts.push(`Résultat calculé: ${calculatedResult.toFixed(2)}`);
+    }
+    
+    // Si aucune information n'a été saisie, afficher un message par défaut
+    if (commentParts.length === 1) {
+      setCommentaire('Qualification: Aucune information saisie.');
+    } else {
+      setCommentaire(commentParts.join(', ') + '.');
+    }
   }, [revenus, charges, situationPro, statutMarital]);
   
   const handleSave = () => {
     onSave(commentaire);
     onClose();
+  };
+
+  const handleSelectChange = (field: 'statutMarital' | 'situationPro', value: string) => {
+    if (value === 'reset') {
+      if (field === 'statutMarital') {
+        setStatutMarital('');
+      } else {
+        setSituationPro('');
+      }
+    } else {
+      if (field === 'statutMarital') {
+        setStatutMarital(value);
+      } else {
+        setSituationPro(value);
+      }
+    }
   };
 
   return (
@@ -190,7 +277,7 @@ const QualificationDialog: React.FC<QualificationDialogProps> = ({ isOpen, onClo
               <Select
                 options={statutMaritalOptions}
                 value={statutMarital}
-                onChange={(value) => setStatutMarital(value as QualificationStatutMarital)}
+                onChange={(value) => handleSelectChange('statutMarital', value)}
               />
             </div>
             <div className="space-y-2">
@@ -198,7 +285,7 @@ const QualificationDialog: React.FC<QualificationDialogProps> = ({ isOpen, onClo
               <Select
                 options={situationProOptions}
                 value={situationPro}
-                onChange={(value) => setSituationPro(value as QualificationSituationPro)}
+                onChange={(value) => handleSelectChange('situationPro', value)}
               />
             </div>
           </div>
@@ -211,7 +298,7 @@ const QualificationDialog: React.FC<QualificationDialogProps> = ({ isOpen, onClo
                 value={revenus}
                 onChange={(e) => setRevenus(e.target.value)}
                 placeholder="Ex: 5000"
-                className="bg-white dark:bg-slate-800 text-slate-900 dark:text-white border-slate-300 dark:border-slate-600"
+                className="bg-input text-foreground border-slate-300 dark:border-slate-600"
               />
             </div>
             <div className="space-y-2">
@@ -221,7 +308,7 @@ const QualificationDialog: React.FC<QualificationDialogProps> = ({ isOpen, onClo
                 value={charges}
                 onChange={(e) => setCharges(e.target.value)}
                 placeholder="Ex: 2000"
-                className="bg-white dark:bg-slate-800 text-slate-900 dark:text-white border-slate-300 dark:border-slate-600"
+                className="bg-input text-foreground border-slate-300 dark:border-slate-600"
               />
             </div>
             <div className="space-y-2">
@@ -243,7 +330,7 @@ const QualificationDialog: React.FC<QualificationDialogProps> = ({ isOpen, onClo
               value={commentaire}
               onChange={(e) => setCommentaire(e.target.value)}
               rows={4}
-              className="w-full resize-none bg-white dark:bg-slate-800 text-slate-900 dark:text-white border-slate-300 dark:border-slate-600"
+              className="w-full resize-none bg-input text-foreground border-slate-300 dark:border-slate-600"
               placeholder="Commentaire automatique basé sur les informations saisies..."
             />
           </div>
@@ -283,4 +370,4 @@ const GenericInfoDialogComponent: React.FC<GenericInfoDialogProps> = ({ isOpen, 
   );
 };
 
-export { EmailDialog, RappelDialog, QualificationDialog, GenericInfoDialogComponent as GenericInfoDialog };
+export { EmailDialog, RappelDialog, RendezVousDialog, QualificationDialog, GenericInfoDialogComponent as GenericInfoDialog };

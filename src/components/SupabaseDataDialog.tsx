@@ -4,7 +4,7 @@ import { Modal, Button, Input } from './Common';
 import { supabaseService } from '../services/supabaseService';
 import { IconChevronUp, IconChevronDown } from '../constants';
 import { v4 as uuidv4 } from 'uuid';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from './ui/dialog';
 import { Badge } from './ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Progress } from './ui/progress';
@@ -124,6 +124,9 @@ const APP_COLUMNS = [
 ];
 
 export const SupabaseDataDialog: React.FC<SupabaseDataDialogProps> = ({ isOpen, onClose, onImport, theme }) => {
+  // Debug log pour vérifier le rendu
+  console.log('🐛 SupabaseDataDialog rendu avec isOpen:', isOpen);
+
   // États principaux
   const [step, setStep] = useState<'config' | 'mapping' | 'preview'>('config');
   const [rawContacts, setRawContacts] = useState<RawContact[]>([]);
@@ -527,16 +530,16 @@ export const SupabaseDataDialog: React.FC<SupabaseDataDialogProps> = ({ isOpen, 
   // Rendu du formulaire de configuration
   if (showConfigForm) {
     return (
-      <Dialog open={isOpen} onOpenChange={onClose}>
-        <DialogContent className="sm:max-w-md bg-white dark:bg-gray-800">
-          <DialogHeader className="bg-white dark:bg-gray-800">
-            <DialogTitle className="flex items-center gap-2">
-              <Settings className="h-5 w-5" />
-              Configuration Supabase
-            </DialogTitle>
+          <Dialog open={isOpen} onOpenChange={onClose}>
+      <DialogContent className="sm:max-w-md bg-card text-card-foreground z-[9999]">
+          <DialogHeader className="bg-card text-card-foreground">
+            <DialogTitle>Configuration Supabase</DialogTitle>
+            <DialogDescription>
+              Configurez les paramètres de connexion à votre base de données Supabase.
+            </DialogDescription>
           </DialogHeader>
           
-          <div className="space-y-4 bg-white dark:bg-gray-800">
+          <div className="space-y-4 bg-card text-card-foreground">
             <div className="space-y-2">
               <label className="text-sm font-medium">URL Supabase</label>
               <Input
@@ -584,15 +587,15 @@ export const SupabaseDataDialog: React.FC<SupabaseDataDialogProps> = ({ isOpen, 
   if (step === 'mapping') {
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-[95vw] w-full h-[90vh] p-0 bg-white dark:bg-gray-800">
-        <DialogHeader className="px-6 py-4 border-b bg-white dark:bg-gray-800">
+      <DialogContent className="max-w-[95vw] w-full h-[90vh] p-0 bg-card text-card-foreground z-[9999]">
+        <DialogHeader className="px-6 py-4 border-b bg-card text-card-foreground">
           <DialogTitle className="flex items-center gap-2">
               <Link className="h-5 w-5" />
               Configuration du mapping des colonnes
           </DialogTitle>
         </DialogHeader>
 
-        <div className="flex-1 flex flex-col overflow-hidden bg-white dark:bg-gray-800">
+        <div className="flex-1 flex flex-col overflow-hidden bg-card text-card-foreground">
             {/* Instructions */}
             <div className="px-6 py-4 bg-blue-50 dark:bg-blue-900/20 border-b">
               <p className="text-sm text-blue-800 dark:text-blue-200">
@@ -748,15 +751,15 @@ export const SupabaseDataDialog: React.FC<SupabaseDataDialogProps> = ({ isOpen, 
   // Étape de prévisualisation et sélection
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-[95vw] w-full h-[90vh] p-0 bg-white dark:bg-gray-800">
-        <DialogHeader className="px-6 py-4 border-b bg-white dark:bg-gray-800">
+      <DialogContent className="max-w-[95vw] w-full h-[90vh] p-0 bg-card text-card-foreground z-[9999]">
+        <DialogHeader className="px-6 py-4 border-b bg-card text-card-foreground">
           <DialogTitle className="flex items-center gap-2">
             <Database className="h-5 w-5" />
             Prévisualisation et sélection des contacts
           </DialogTitle>
         </DialogHeader>
 
-        <div className="flex-1 flex flex-col overflow-hidden bg-white dark:bg-gray-800">
+        <div className="flex-1 flex flex-col overflow-hidden bg-card text-card-foreground">
           {/* Barre d'outils */}
           <div className="px-4 sm:px-6 py-4 border-b bg-gray-50 dark:bg-gray-900">
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
@@ -830,8 +833,8 @@ export const SupabaseDataDialog: React.FC<SupabaseDataDialogProps> = ({ isOpen, 
             ) : (
               <div className="h-full flex flex-col">
                 {/* Container avec scroll horizontal */}
-                <div className="flex-1 overflow-auto bg-white dark:bg-gray-800 hide-scrollbar">
-                  <div className="min-w-fit bg-white dark:bg-gray-800">
+                <div className="flex-1 overflow-auto bg-card text-card-foreground hide-scrollbar">
+                  <div className="min-w-fit bg-card text-card-foreground">
                     {/* En-têtes de table */}
                     <div className="border-b bg-gray-50 dark:bg-gray-800 sticky top-0 z-10">
                       {table.getHeaderGroups().map(headerGroup => (
@@ -856,7 +859,7 @@ export const SupabaseDataDialog: React.FC<SupabaseDataDialogProps> = ({ isOpen, 
                     {/* Corps de table virtualisé */}
                     <div
                       ref={tableContainerRef}
-                      className="bg-white dark:bg-gray-800"
+                      className="bg-card text-card-foreground"
                       style={{ height: 'calc(90vh - 280px)', minHeight: '300px', maxHeight: '600px' }}
                     >
                       <div
@@ -871,7 +874,7 @@ export const SupabaseDataDialog: React.FC<SupabaseDataDialogProps> = ({ isOpen, 
                           return (
                             <div
                               key={row.id}
-                              className={`absolute top-0 left-0 w-full flex border-b hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer transition-none bg-white dark:bg-gray-800 ${
+                              className={`absolute top-0 left-0 w-full flex border-b hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer transition-none bg-card text-card-foreground ${
                                 row.getIsSelected() ? 'bg-blue-100 dark:bg-blue-900/50' : ''
                               }`}
                               style={{
@@ -883,7 +886,7 @@ export const SupabaseDataDialog: React.FC<SupabaseDataDialogProps> = ({ isOpen, 
                               {row.getVisibleCells().map(cell => (
                                 <div
                                   key={cell.id}
-                                  className="flex-shrink-0 border-r last:border-r-0 flex items-center bg-white dark:bg-gray-800"
+                                  className="flex-shrink-0 border-r last:border-r-0 flex items-center bg-card text-card-foreground"
                                   style={{ width: `${cell.column.getSize()}px` }}
                                 >
                                   {flexRender(cell.column.columnDef.cell, cell.getContext())}

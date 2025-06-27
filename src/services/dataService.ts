@@ -625,76 +625,95 @@ export const exportContactsToFile = (contacts: Contact[], format: 'csv' | 'xlsx'
 };
 
 export const generateGmailComposeUrl = (
-  emailTo: string,
-  nom: string, // Full name (Prénom Nom)
+  contact: Contact,
   emailType: EmailType,
   civility: Civility,
-  signatureName: string = "Dimitri MOREL - Arcanis Conseil"
+  signatureName: string = ""
 ): string => {
-  const titre = civility === Civility.Monsieur ? "Monsieur" : "Madame";
-  const contactLastName = nom.split(' ').slice(1).join(' ') || nom; // Attempt to get last name
-
-  const params: Record<string, string> = {
-    view: 'cm',
-    fs: '1',
-    tf: '1',
-    to: emailTo,
-  };
+  const emailTo = contact.email;
+  const contactLastName = contact.nom || '';
+  const titre = civility === Civility.Madame ? "Madame" : "Monsieur";
+  const params = new URLSearchParams({ to: emailTo });
+  
+  // Charger les templates personnalisés
+  const STORAGE_KEY = 'dimicall_email_templates';
   let subject = "";
   let bodyTemplate = "";
+  
+  // Templates par défaut
+  const defaultTemplates = {
+    [EmailType.PremierContact]: {
+      subject: "Arcanis Conseil - Premier Contact",
+      body: "Bonjour {titre} {nom},\n\nPour resituer mon appel, je suis gérant privé au sein du cabinet de gestion de patrimoine Arcanis Conseil. Je vous envoie l'adresse de notre site web que vous puissiez en savoir d'avantage : https://arcanis-conseil.fr\n\nLe site est avant tout une vitrine, le mieux est de m'appeler si vous souhaitez davantage d'informations ou de prendre un créneau de 30 minutes dans mon agenda via ce lien : https://cal.com/dimitri-morel-arcanis-conseil/audit-patrimonial?overlayCalendar=true\n\nBien à vous,"
+    },
+    [EmailType.D0Visio]: {
+      subject: "Confirmation rendez-vous visio - Arcanis Conseil",
+      body: "Bonjour {titre} {nom}, merci pour votre temps lors de notre échange téléphonique. \n\nSuite à notre appel, je vous confirme {rdv} en visio.\n\nPour rappel, notre entretien durera une trentaine de minutes. Le but est de vous présenter plus en détail Arcanis Conseil, d'effectuer ensemble l'état des lieux de votre situation patrimoniale (revenus, patrimoine immobilier, épargne constituée etc.), puis de vous donner un diagnostic de vos leviers. Notre métier est de vous apporter un conseil pertinent et personnalisé sur l'optimisation de votre patrimoine.\n\nJe vous invite à visiter notre site internet pour de plus amples renseignements avant le début de notre échange : www.arcanis-conseil.fr\n\nN'hésitez pas à revenir vers moi en cas de question ou d'un besoin supplémentaire d'information.\n\nBien cordialement"
+    },
+    [EmailType.R0Interne]: {
+      subject: "Confirmation rendez-vous présentiel - Arcanis Conseil",
+      body: "Bonjour {titre} {nom}, merci pour votre temps lors de notre échange téléphonique. \n\nSuite à notre appel, je vous confirme {rdv} dans nos locaux au 22 rue la Boétie, 75008 Paris.\n\nPour rappel, notre entretien durera une trentaine de minutes. Le but est de vous présenter plus en détail Arcanis Conseil, d'effectuer ensemble l'état des lieux de votre situation patrimoniale (revenus, patrimoine immobilier, épargne constituée etc.), puis de vous donner un diagnostic de vos leviers. Notre métier est de vous apporter un conseil pertinent et personnalisé sur l'optimisation de votre patrimoine.\n\nJe vous invite à visiter notre site internet pour de plus amples renseignements avant le début de notre échange : www.arcanis-conseil.fr\n\nN'hésitez pas à revenir vers moi en cas de question ou d'un besoin supplémentaire d'information.\n\nBien cordialement"
+    },
+    [EmailType.R0Externe]: {
+      subject: "Confirmation rendez-vous présentiel - Arcanis Conseil",
+      body: "Bonjour {titre} {nom}, merci pour votre temps lors de notre échange téléphonique. \n\nSuite à notre appel, je vous confirme {rdv} à {adresse}.\n\nPour rappel, notre entretien durera une trentaine de minutes. Le but est de vous présenter plus en détail Arcanis Conseil, d'effectuer ensemble l'état des lieux de votre situation patrimoniale (revenus, patrimoine immobilier, épargne constituée etc.), puis de vous donner un diagnostic de vos leviers. Notre métier est de vous apporter un conseil pertinent et personnalisé sur l'optimisation de votre patrimoine.\n\nJe vous invite à visiter notre site internet pour de plus amples renseignements avant le début de notre échange : www.arcanis-conseil.fr\n\nN'hésitez pas à revenir vers moi en cas de question ou d'un besoin supplémentaire d'information.\n\nBien cordialement"
+    }
+  };
 
-  const commonPart =
-    `Pour rappel, notre entretien durera une trentaine de minutes. Le but est de vous présenter plus en détail Arcanis Conseil, ` +
-    `d'effectuer ensemble l'état des lieux de votre situation patrimoniale (revenus, patrimoine immobilier, épargne constituée etc.), ` +
-    `puis de vous donner un diagnostic de votre situation. Notre métier est de vous apporter un conseil pertinent et personnalisé sur ` +
-    `l'optimisation de votre patrimoine.\n\n` +
-    `Vous pouvez également visiter notre site internet pour de plus amples renseignements : www.arcanis-conseil.fr\n\n` +
-    `N'hésitez pas à revenir vers moi en cas de question ou d'un besoin supplémentaire d'information.\n\n` +
-    `Bien cordialement,\n${signatureName}`;
-
-  switch (emailType) {
-    case EmailType.D0Visio:
-      subject = "Confirmation rendez-vous visio - Arcanis Conseil";
-      bodyTemplate =
-        `Bonjour ${titre} ${contactLastName},\n\n` +
-        `Merci pour votre temps lors de notre échange téléphonique.\n\n` +
-        `Suite à notre appel, je vous confirme notre entretien du [DATE ET HEURE] en visio.\n\n${commonPart}`;
-      break;
-    case EmailType.R0Interne:
-      subject = "Confirmation rendez-vous présentiel - Arcanis Conseil";
-      bodyTemplate =
-        `Bonjour ${titre} ${contactLastName},\n\n` +
-        `Merci pour votre temps lors de notre échange téléphonique.\n\n` +
-        `Suite à notre appel, je vous confirme notre entretien du [DATE ET HEURE] dans nos locaux au 22 rue la Boétie, 75008 Paris.\n\n${commonPart}`;
-      break;
-    case EmailType.R0Externe:
-      subject = "Confirmation rendez-vous présentiel - Arcanis Conseil";
-      bodyTemplate =
-        `Bonjour ${titre} ${contactLastName},\n\n` +
-        `Merci pour votre temps lors de notre échange téléphonique.\n\n` +
-        `Suite à notre appel, je vous confirme notre entretien du [DATE ET HEURE] à [ADRESSE CLIENT].\n\n${commonPart}`;
-      break;
-    case EmailType.PremierContact:
-      subject = "Arcanis Conseil - Premier Contact";
-      bodyTemplate =
-        `Bonjour ${titre} ${contactLastName},\n\n` +
-        `Pour resituer mon appel, je suis gérant privé au sein du cabinet de gestion de patrimoine Arcanis Conseil. ` +
-        `Je vous envoie l'adresse de notre site web que vous puissiez en savoir d'avantage : https://arcanis-conseil.fr\n\n` +
-        `Le site est avant tout une vitrine, le mieux est de m'appeler si vous souhaitez davantage d'informations ` +
-        `ou de prendre un créneau de 30 minutes dans mon agenda via ce lien : https://calendly.com/dimitri-morel-arcanis-conseil/audit\n\n` +
-        `Bien à vous,\n${signatureName}`;
-      break;
+  // Essayer de charger les templates personnalisés
+  let templates = defaultTemplates;
+  let signature = signatureName || '';
+  
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved) {
+      const data = JSON.parse(saved);
+      if (data.templates) {
+        templates = data.templates;
+      }
+      if (data.signature) {
+        signature = data.signature;
+      }
+    }
+  } catch (error) {
+    console.error('Erreur lors du chargement des templates personnalisés:', error);
   }
 
-  const finalBody = bodyTemplate
-    .replace("[DATE ET HEURE]", "date et heure à déterminer")
-    .replace("[ADRESSE CLIENT]", "l'adresse que vous m'avez communiquée");
+  // Récupérer le template pour le type d'email
+  const template = templates[emailType];
+  if (template) {
+    subject = template.subject;
+    bodyTemplate = template.body;
+  }
 
-  params['su'] = subject;
-  params['body'] = finalBody;
+  // Gestion de la date et l'heure du RDV
+  let rdvDetails = "notre entretien du [DATE ET HEURE]";
+  if (contact.dateRDV && contact.heureRDV) {
+    try {
+      const date = new Date(`${contact.dateRDV}T${contact.heureRDV}`);
+      if (!isNaN(date.getTime())) {
+        const dateOptions: Intl.DateTimeFormatOptions = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+        const formattedDate = new Intl.DateTimeFormat('fr-FR', dateOptions).format(date);
+        rdvDetails = `notre entretien du ${formattedDate} à ${contact.heureRDV}`;
+      }
+    } catch (e) {
+      console.error("Erreur de formatage de la date du RDV", e);
+    }
+  }
 
-  const queryParams = new URLSearchParams(params);
-  return `https://mail.google.com/mail/u/0/?${queryParams.toString()}`;
+  // Remplacement des variables dans le template
+  let finalBody = bodyTemplate
+    .replace(/{titre}/g, titre)
+    .replace(/{nom}/g, contactLastName)
+    .replace(/{signature}/g, signature)
+    .replace(/{rdv}/g, rdvDetails)
+    .replace(/{adresse}/g, '[ADRESSE CLIENT]')
+    .replace(/\[DATE ET HEURE\]/g, 'date et heure à déterminer');
+
+  params.set('su', subject);
+  params.set('body', finalBody);
+
+  return `https://mail.google.com/mail/?view=cm&fs=1&${params.toString()}`;
 };
 
 /**
@@ -936,4 +955,133 @@ export const getImportedTableMetadata = (): {
   } catch {
     return null;
   }
+};
+
+// ========================================
+// FONCTIONS SPÉCIFIQUES POUR DIMITABLE
+// ========================================
+
+/**
+ * Exporte les données sélectionnées de DimiTable au format XLSX
+ */
+export const exportDimiTableToExcel = (selectedData: any[], filename?: string): void => {
+  if (!selectedData || selectedData.length === 0) {
+    throw new Error('Aucune donnée à exporter');
+  }
+
+  try {
+    // Créer un nouveau workbook
+    const workbook = XLSX.utils.book_new();
+    
+    // Convertir les données en worksheet
+    const worksheet = XLSX.utils.json_to_sheet(selectedData);
+    
+    // Ajouter le worksheet au workbook
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'DimiTable Export');
+    
+    // Générer le nom de fichier avec timestamp
+    const timestamp = new Date().toISOString().slice(0, 10);
+    const finalFilename = filename || `dimitable_export_${timestamp}.xlsx`;
+    
+    // Télécharger le fichier
+    XLSX.writeFile(workbook, finalFilename);
+    
+    console.log(`✅ Export réussi: ${selectedData.length} lignes exportées vers ${finalFilename}`);
+  } catch (error) {
+    console.error('❌ Erreur lors de l\'export Excel:', error);
+    throw new Error('Erreur lors de l\'export Excel');
+  }
+};
+
+/**
+ * Importe des données depuis un fichier Excel/CSV pour mise à jour dans Supabase
+ */
+export const importDataForDimiTable = async (file: File): Promise<{
+  data: any[];
+  headers: string[];
+  preview: any[];
+  totalRows: number;
+}> => {
+  return new Promise((resolve, reject) => {
+    const fileExtension = file.name.split('.').pop()?.toLowerCase();
+    
+    if (fileExtension === 'xlsx' || fileExtension === 'xls') {
+      // Traitement Excel
+      const reader = new FileReader();
+             reader.onload = (e) => {
+         try {
+           const arrayBuffer = e.target?.result as ArrayBuffer;
+           const uint8Array = new Uint8Array(arrayBuffer);
+           const workbook = XLSX.read(uint8Array, { type: 'array' });
+           const sheetName = workbook.SheetNames[0];
+           const worksheet = workbook.Sheets[sheetName];
+           
+           // Convertir en JSON avec headers
+           const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as any[][];
+           
+           if (jsonData.length === 0) {
+             reject(new Error('Le fichier est vide'));
+             return;
+           }
+           
+           const headers = jsonData[0] as string[];
+           const rows = jsonData.slice(1).filter((row: any[]) => {
+             // Filtrer les lignes vides
+             return Array.isArray(row) && row.some(cell => cell !== null && cell !== undefined && String(cell).trim() !== '');
+           });
+           
+           // Convertir les lignes en objets
+           const processedData = rows.map((row: any[]) => {
+             const obj: any = {};
+             headers.forEach((header, index) => {
+               obj[header] = row[index] || '';
+             });
+             return obj;
+           });
+           
+           const preview = processedData.slice(0, 5); // Aperçu des 5 premières lignes
+           
+           resolve({
+             data: processedData,
+             headers,
+             preview,
+             totalRows: processedData.length
+           });
+         } catch (error: any) {
+           reject(new Error('Erreur lors de la lecture du fichier Excel: ' + (error?.message || error)));
+        }
+      };
+      reader.readAsArrayBuffer(file);
+      
+    } else if (fileExtension === 'csv') {
+      // Traitement CSV avec Papa Parse
+      Papa.parse(file, {
+        header: true,
+        skipEmptyLines: true,
+        encoding: 'UTF-8',
+        complete: (results) => {
+          if (results.errors.length > 0) {
+            reject(new Error('Erreurs dans le fichier CSV: ' + results.errors.map(e => e.message).join(', ')));
+            return;
+          }
+          
+          const data = results.data as any[];
+          const headers = results.meta.fields || [];
+          const preview = data.slice(0, 5);
+          
+          resolve({
+            data,
+            headers,
+            preview,
+            totalRows: data.length
+          });
+        },
+        error: (error) => {
+          reject(new Error('Erreur lors de la lecture du fichier CSV: ' + error.message));
+        }
+      });
+    } else {
+      reject(new Error('Format de fichier non supporté. Utilisez .xlsx, .xls ou .csv'));
+    }
+  });
 };

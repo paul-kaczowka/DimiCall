@@ -1,6 +1,7 @@
 export enum Theme {
   Light = 'light',
   Dark = 'dark',
+  System = 'system',
 }
 
 export enum ContactStatus {
@@ -40,6 +41,7 @@ export interface Contact {
   date?: string; // General date field
   uid?: string; // New UID field
   uid_supabase?: string; // For potential future Supabase integration mapping
+  utilisateur?: string; // Nom complet de l'utilisateur connecté
   // Nouveaux champs pour les itérations Supabase
   statutAppel?: string; // Statut des appels (statut_appel_X)
   statutRDV?: string; // Statut des RDV (statut_r*_*)

@@ -5,10 +5,7 @@ import { Contact, ContactStatus } from '../types';
 const SUPABASE_URL = (import.meta as any).env?.VITE_SUPABASE_URL || '';
 const SUPABASE_ANON_KEY = (import.meta as any).env?.VITE_SUPABASE_ANON_KEY || '';
 
-// Logs de débogage pour la configuration
-console.log('🔧 Configuration Supabase:');
-console.log('URL:', SUPABASE_URL ? `${SUPABASE_URL.substring(0, 30)}...` : 'non définie');
-console.log('Key:', SUPABASE_ANON_KEY ? `${SUPABASE_ANON_KEY.substring(0, 20)}...` : 'non définie');
+
 
 export interface SupabaseContact {
   id?: string;
@@ -23,6 +20,14 @@ export interface RealtimeContactUpdate {
 
 class SupabaseService {
   private client!: SupabaseClient;
+  
+  // Getter pour accéder au client Supabase depuis d'autres services
+  getClient(): SupabaseClient {
+    if (!this.isReady()) {
+      throw new Error('Client Supabase non configuré');
+    }
+    return this.client;
+  }
   private realtimeChannel: RealtimeChannel | null = null;
   private listeners: Array<(update: RealtimeContactUpdate) => void> = [];
   private isConfigured: boolean = false;
@@ -33,17 +38,13 @@ class SupabaseService {
   private idColumnName: string = 'id'; // Nom de la colonne d'identité détectée
 
   constructor() {
-    console.log('🔧 SupabaseService: Initialisation...');
     this.checkConfiguration();
   }
 
   private checkConfiguration() {
-    console.log('🔧 SupabaseService: Vérification configuration...');
-    
     // Essayer de charger depuis localStorage d'abord (comme supabase_config.json)
     const savedConfig = this.loadConfigFromStorage();
     if (savedConfig.url && savedConfig.key) {
-      console.log('🔧 Configuration trouvée dans localStorage');
       this.configure(savedConfig.url, savedConfig.key);
       return;
     }
@@ -51,16 +52,9 @@ class SupabaseService {
     // Fallback vers variables d'environnement
     const url = SUPABASE_URL;
     const anonKey = SUPABASE_ANON_KEY;
-    
-    console.log('🔧 Variables détectées:', { 
-      url: url ? `${url.substring(0, 20)}...` : 'undefined',
-      anonKey: anonKey ? `${anonKey.substring(0, 20)}...` : 'undefined'
-    });
 
     if (url && anonKey) {
       this.configure(url, anonKey);
-    } else {
-      console.log('❌ Configuration Supabase manquante - utiliser configureManually()');
     }
   }
 
@@ -75,7 +69,7 @@ class SupabaseService {
         };
       }
     } catch (error) {
-      console.log('🔧 Aucune configuration sauvegardée trouvée');
+      // Configuration non trouvée
     }
     return { url: '', key: '' };
   }
@@ -84,7 +78,6 @@ class SupabaseService {
     try {
       const config = { url, anon_key: key };
       localStorage.setItem('supabase_config', JSON.stringify(config));
-      console.log('💾 Configuration Supabase sauvegardée');
     } catch (error) {
       console.error('❌ Erreur sauvegarde configuration:', error);
     }
@@ -92,8 +85,6 @@ class SupabaseService {
 
   // Nouvelle méthode pour configuration manuelle (comme dans l'ancienne app)
   configureManually(url: string, anonKey: string): Promise<{ success: boolean; error?: string }> {
-    console.log('🔧 Configuration manuelle Supabase...');
-    
     return new Promise((resolve) => {
       try {
         this.configure(url, anonKey);
@@ -118,14 +109,11 @@ class SupabaseService {
   }
 
   configure(url: string, anonKey: string) {
-    console.log('🔧 Configuration Supabase:', { url: `${url.substring(0, 30)}...` });
-    
     try {
       this.client = createClient(url, anonKey);
       this.isConfigured = true;
       this.currentUrl = url;
       this.currentKey = anonKey;
-      console.log('✅ Client Supabase configuré');
     } catch (error) {
       console.error('❌ Erreur configuration client:', error);
       this.isConfigured = false;
@@ -743,6 +731,312 @@ class SupabaseService {
     }
   }
 
+  /**
+   * Recherche globale optimisée dans toute la base de données
+   * Utilise le Full Text Search de PostgreSQL pour des performances maximales
+   */
+  async searchInFullDatabase(
+    query: string, 
+    searchColumn: string = 'all',
+    page: number = 0,
+    pageSize: number = 250,
+    tableName: string = 'DimiTable'
+  ): Promise<{
+    data: any[];
+    totalCount: number;
+    hasMore: boolean;
+    searchQuery: string;
+  }> {
+    if (!this.isConfigured) {
+      throw new Error('Supabase non configuré');
+    }
+
+    if (!query || query.trim().length === 0) {
+      // Si pas de recherche, retourner les données paginées normales
+      const result = await this.getRawSupabaseData(page, pageSize, tableName);
+      return {
+        data: result.data,
+        totalCount: result.totalCount,
+        hasMore: result.hasMore,
+        searchQuery: ''
+      };
+    }
+
+    try {
+      console.log(`🔍 Recherche globale: "${query}" dans colonne: ${searchColumn}`);
+      
+      const startRange = page * pageSize;
+      const endRange = startRange + pageSize - 1;
+      const sanitizedQuery = query.trim();
+
+      let queryBuilder = this.client.from(tableName).select('*', { count: 'exact' });
+
+      if (searchColumn === 'all') {
+        // Colonnes de texte recherchables (exclut les UUIDs et autres types non-textuels)
+        const searchableTextColumns = [
+          'prenom',
+          'nom', 
+          'telephone',
+          'numero',
+          'email',
+          'mail',
+          'commentaire',
+          'commentaires_appel_1',
+          'statut',
+          'statut_final',
+          'adresse',
+          'ville',
+          'code_postal',
+          'entreprise',
+          'poste'
+        ];
+
+        // Construire la recherche OR seulement sur les colonnes textuelles
+        const searchConditions = searchableTextColumns
+          .map(col => `${col}.ilike.%${sanitizedQuery}%`)
+          .join(',');
+
+        queryBuilder = queryBuilder.or(searchConditions);
+
+      } else if (searchColumn && searchColumn !== 'all') {
+        // Recherche dans une colonne spécifique
+        // Vérifier si c'est une colonne UUID ou numérique
+        if (searchColumn.toLowerCase().includes('id') || searchColumn.toLowerCase() === 'uid') {
+          // Pour les UUIDs, utiliser une recherche exacte ou une conversion en texte
+          if (this.isValidUUID(sanitizedQuery)) {
+            queryBuilder = queryBuilder.eq(searchColumn, sanitizedQuery);
+          } else {
+            // Conversion UUID en texte pour recherche partielle
+            queryBuilder = queryBuilder.like(`${searchColumn}::text`, `%${sanitizedQuery}%`);
+          }
+        } else {
+          // Pour les autres colonnes, utiliser ILIKE normal
+          queryBuilder = queryBuilder.ilike(searchColumn, `%${sanitizedQuery}%`);
+        }
+      } else {
+        // Fallback : recherche sur les colonnes principales seulement
+        queryBuilder = queryBuilder.or(
+          `prenom.ilike.%${sanitizedQuery}%,nom.ilike.%${sanitizedQuery}%,telephone.ilike.%${sanitizedQuery}%,email.ilike.%${sanitizedQuery}%`
+        );
+      }
+
+      // Appliquer la pagination
+      queryBuilder = queryBuilder.range(startRange, endRange);
+
+      const { data, error, count } = await queryBuilder;
+
+      if (error) {
+        console.error('❌ Erreur lors de la recherche globale:', error);
+        throw error;
+      }
+
+      console.log(`✅ Recherche globale: ${data?.length || 0} résultats trouvés sur ${count || 0} total`);
+
+      return {
+        data: data || [],
+        totalCount: count || 0,
+        hasMore: count ? (startRange + (data?.length || 0)) < count : false,
+        searchQuery: sanitizedQuery
+      };
+
+    } catch (error) {
+      console.error('❌ Erreur lors de la recherche globale:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Vérifie si une chaîne est un UUID valide
+   */
+  private isValidUUID(str: string): boolean {
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    return uuidRegex.test(str);
+  }
+
+  /**
+   * Obtient les colonnes recherchables (exclut les UUIDs, dates, etc.)
+   */
+  private getSearchableColumns(): string[] {
+    // Colonnes connues comme étant recherchables
+    const knownSearchableColumns = [
+      'prenom', 'nom', 'telephone', 'numero', 'email', 'mail',
+      'commentaire', 'commentaires_appel_1', 'statut', 'statut_final',
+      'adresse', 'ville', 'code_postal', 'entreprise', 'poste',
+      'fonction', 'departement', 'notes'
+    ];
+
+    // Si on a découvert les colonnes, filtrer intelligemment
+    if (this.discoveredColumns.length > 0) {
+      return this.discoveredColumns.filter(col => {
+        const colLower = col.toLowerCase();
+        
+        // Exclure les colonnes UUID/ID
+        if (colLower.includes('id') || colLower === 'uid') return false;
+        
+        // Exclure les colonnes de date/timestamp
+        if (colLower.includes('date') || colLower.includes('time') || 
+            colLower.includes('created') || colLower.includes('updated')) return false;
+        
+        // Exclure les colonnes numériques pures
+        if (colLower.includes('count') || colLower.includes('number') || 
+            colLower === 'age' || colLower.includes('price')) return false;
+        
+        // Inclure les colonnes qui semblent être du texte
+        return true;
+      });
+    }
+
+    // Fallback vers les colonnes connues
+    return knownSearchableColumns;
+  }
+
+  /**
+   * Recherche avec gestion intelligente des types de colonnes
+   */
+  async searchInFullDatabaseSmart(
+    query: string, 
+    searchColumn: string = 'all',
+    page: number = 0,
+    pageSize: number = 250,
+    tableName: string = 'DimiTable'
+  ): Promise<{
+    data: any[];
+    totalCount: number;
+    hasMore: boolean;
+    searchQuery: string;
+  }> {
+    if (!this.isConfigured) {
+      throw new Error('Supabase non configuré');
+    }
+
+    if (!query || query.trim().length === 0) {
+      const result = await this.getRawSupabaseData(page, pageSize, tableName);
+      return {
+        data: result.data,
+        totalCount: result.totalCount,
+        hasMore: result.hasMore,
+        searchQuery: ''
+      };
+    }
+
+    try {
+      console.log(`🔍 Recherche intelligente: "${query}" dans colonne: ${searchColumn}`);
+      
+      const startRange = page * pageSize;
+      const endRange = startRange + pageSize - 1;
+      const sanitizedQuery = query.trim();
+
+      let queryBuilder = this.client.from(tableName).select('*', { count: 'exact' });
+
+      if (searchColumn === 'all') {
+        // Utiliser les colonnes recherchables découvertes dynamiquement
+        const searchableColumns = this.getSearchableColumns();
+        console.log(`📋 Colonnes recherchables détectées:`, searchableColumns);
+
+        if (searchableColumns.length > 0) {
+          const searchConditions = searchableColumns
+            .map(col => `${col}.ilike.%${sanitizedQuery}%`)
+            .join(',');
+
+          queryBuilder = queryBuilder.or(searchConditions);
+        } else {
+          // Fallback minimal
+          queryBuilder = queryBuilder.or(
+            `prenom.ilike.%${sanitizedQuery}%,nom.ilike.%${sanitizedQuery}%`
+          );
+        }
+      } else if (searchColumn && searchColumn !== 'all') {
+        // Recherche dans une colonne spécifique avec gestion des types
+        if (this.isUUIDColumn(searchColumn)) {
+          if (this.isValidUUID(sanitizedQuery)) {
+            queryBuilder = queryBuilder.eq(searchColumn, sanitizedQuery);
+          } else {
+            queryBuilder = queryBuilder.like(`${searchColumn}::text`, `%${sanitizedQuery}%`);
+          }
+        } else {
+          queryBuilder = queryBuilder.ilike(searchColumn, `%${sanitizedQuery}%`);
+        }
+      }
+
+      queryBuilder = queryBuilder.range(startRange, endRange);
+      const { data, error, count } = await queryBuilder;
+
+      if (error) {
+        console.error('❌ Erreur lors de la recherche intelligente:', error);
+        throw error;
+      }
+
+      console.log(`✅ Recherche intelligente: ${data?.length || 0} résultats sur ${count || 0} total`);
+
+      return {
+        data: data || [],
+        totalCount: count || 0,
+        hasMore: count ? (startRange + (data?.length || 0)) < count : false,
+        searchQuery: sanitizedQuery
+      };
+
+    } catch (error) {
+      console.error('❌ Erreur lors de la recherche intelligente:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Détermine si une colonne est de type UUID
+   */
+  private isUUIDColumn(columnName: string): boolean {
+    const colLower = columnName.toLowerCase();
+    return colLower.includes('id') || colLower === 'uid' || colLower.includes('uuid');
+  }
+
+  /**
+   * Recherche Full Text Search avancée (nécessite une colonne tsvector)
+   * Plus performante pour de gros volumes de données si configurée
+   */
+  async searchWithFullTextSearch(
+    query: string,
+    page: number = 0,
+    pageSize: number = 250,
+    tableName: string = 'DimiTable'
+  ): Promise<{
+    data: any[];
+    totalCount: number;
+    hasMore: boolean;
+  }> {
+    if (!this.isConfigured) {
+      throw new Error('Supabase non configuré');
+    }
+
+    try {
+      const startRange = page * pageSize;
+      const endRange = startRange + pageSize - 1;
+      
+      // Utilise to_tsvector et to_tsquery pour une recherche Full Text optimisée
+      // Cette approche nécessiterait une colonne search_vector dans la table
+      const { data, error, count } = await this.client
+        .from(tableName)
+        .select('*', { count: 'exact' })
+        .textSearch('fts', query, {
+          type: 'websearch',
+          config: 'french'
+        })
+        .range(startRange, endRange);
+
+      if (error) throw error;
+
+      return {
+        data: data || [],
+        totalCount: count || 0,
+        hasMore: count ? (startRange + (data?.length || 0)) < count : false
+      };
+
+    } catch (error) {
+      // Fallback vers la recherche normale si FTS n'est pas configuré
+      console.warn('⚠️ Full Text Search non disponible, fallback vers recherche normale');
+      return this.searchInFullDatabase(query, 'all', page, pageSize, tableName);
+    }
+  }
+
   async bulkImportContacts(contacts: Omit<Contact, 'id' | 'numeroLigne'>[], tableName: string = 'DimiTable'): Promise<Contact[]> {
     if (!this.isConfigured) {
       throw new Error('Supabase non configuré');
@@ -1018,12 +1312,245 @@ class SupabaseService {
     return supabaseContact;
   }
 
+  // Nouvelle méthode pour mettre à jour un champ directement sans mapping Contact
+  async updateRawField(id: string, fieldName: string, value: any, tableName: string = 'DimiTable'): Promise<void> {
+    if (!this.isConfigured) {
+      throw new Error('Supabase non configuré');
+    }
+
+    try {
+      console.log('🔄 Mise à jour champ brut:', { id, fieldName, value, tableName });
+      
+      // Valider que la colonne existe
+      if (this.discoveredColumns.length > 0 && !this.validateColumn(fieldName)) {
+        throw new Error(`Colonne '${fieldName}' non trouvée dans la table ${tableName}`);
+      }
+
+      // Préparer l'objet de mise à jour
+      const updates = { [fieldName]: value };
+
+      console.log(`🚀 UPDATE ${tableName} SET ${fieldName} = ${value} WHERE ${this.idColumnName} = ${id}`);
+
+      // Exécuter la mise à jour
+      const { error: updateError, count: updateCount } = await this.client
+        .from(tableName)
+        .update(updates)
+        .eq(this.idColumnName, id);
+
+      if (updateError) {
+        console.error('❌ Erreur lors de la mise à jour du champ:', updateError);
+        throw updateError;
+      }
+
+      console.log(`✅ Champ ${fieldName} mis à jour avec succès (${updateCount} ligne(s) affectée(s))`);
+      
+    } catch (error) {
+      console.error('❌ Erreur updateRawField:', error);
+      throw error;
+    }
+  }
+
   cleanup() {
     if (this.realtimeChannel) {
       this.realtimeChannel.unsubscribe();
       this.realtimeChannel = null;
     }
     this.listeners = [];
+  }
+
+  /**
+   * Met à jour les données d'un contact en trouvant le prochain slot d'appel disponible
+   * Logique: si date_appel_1 et statut_appel_1 sont remplis, passer à appel_2, etc.
+   */
+  async updateContactWithNewCall(
+    uid: string, 
+    newCallData: {
+      date_appel?: string;
+      statut_appel?: string;
+      commentaires_appel?: string;
+    },
+    tableName: string = 'DimiTable'
+  ): Promise<{ success: boolean; usedSlot: number; error?: string }> {
+    if (!this.isConfigured) {
+      throw new Error('Supabase non configuré');
+    }
+
+    try {
+      // 1. Récupérer les données actuelles du contact
+      const { data: existingData, error: fetchError } = await this.client
+        .from(tableName)
+        .select('*')
+        .eq('UID', uid)
+        .single();
+
+      if (fetchError) {
+        throw new Error(`Erreur lors de la récupération du contact: ${fetchError.message}`);
+      }
+
+      if (!existingData) {
+        throw new Error(`Contact avec UID ${uid} non trouvé`);
+      }
+
+      // 2. Trouver le prochain slot disponible (1, 2, 3, 4)
+      let availableSlot = 0;
+      
+      for (let i = 1; i <= 4; i++) {
+        const dateField = `date_appel_${i}`;
+        const statutField = `statut_appel_${i}`;
+        
+        // Un slot est considéré comme libre si date_appel ET statut_appel sont vides
+        const dateValue = existingData[dateField];
+        const statutValue = existingData[statutField];
+        
+        if (!dateValue || !statutValue || 
+            String(dateValue).trim() === '' || 
+            String(statutValue).trim() === '') {
+          availableSlot = i;
+          break;
+        }
+      }
+
+      if (availableSlot === 0) {
+        return {
+          success: false,
+          usedSlot: 0,
+          error: 'Tous les slots d\'appel sont occupés (maximum 4 appels par contact)'
+        };
+      }
+
+      // 3. Préparer les données de mise à jour
+      const updateData: any = {};
+      
+      if (newCallData.date_appel) {
+        updateData[`date_appel_${availableSlot}`] = newCallData.date_appel;
+      }
+      
+      if (newCallData.statut_appel) {
+        updateData[`statut_appel_${availableSlot}`] = newCallData.statut_appel;
+      }
+      
+      if (newCallData.commentaires_appel) {
+        updateData[`commentaires_appel_${availableSlot}`] = newCallData.commentaires_appel;
+      }
+
+      // 4. Effectuer la mise à jour
+      const { error: updateError } = await this.client
+        .from(tableName)
+        .update(updateData)
+        .eq('UID', uid);
+
+      if (updateError) {
+        throw new Error(`Erreur lors de la mise à jour: ${updateError.message}`);
+      }
+
+      return {
+        success: true,
+        usedSlot: availableSlot
+      };
+
+    } catch (error) {
+      console.error('❌ Erreur lors de la mise à jour du contact:', error);
+      return {
+        success: false,
+        usedSlot: 0,
+        error: error instanceof Error ? error.message : 'Erreur inconnue'
+      };
+    }
+  }
+
+  /**
+   * Mise à jour en masse pour l'import de fichiers
+   * Traite plusieurs contacts avec la logique de slots d'appel
+   */
+  async batchUpdateContactsWithCalls(
+    importData: Array<{
+      UID: string;
+      date_appel?: string;
+      statut_appel?: string;
+      commentaires_appel?: string;
+      [key: string]: any; // Pour d'autres champs éventuels
+    }>,
+    tableName: string = 'DimiTable'
+  ): Promise<{
+    success: number;
+    failed: number;
+    results: Array<{
+      uid: string;
+      success: boolean;
+      usedSlot?: number;
+      error?: string;
+    }>;
+  }> {
+    if (!this.isConfigured) {
+      throw new Error('Supabase non configuré');
+    }
+
+    const results: Array<{
+      uid: string;
+      success: boolean;
+      usedSlot?: number;
+      error?: string;
+    }> = [];
+
+    let successCount = 0;
+    let failedCount = 0;
+
+    // Traiter chaque contact un par un pour gérer la logique des slots
+    for (const contact of importData) {
+      if (!contact.UID) {
+        results.push({
+          uid: 'INCONNU',
+          success: false,
+          error: 'UID manquant'
+        });
+        failedCount++;
+        continue;
+      }
+
+      try {
+        const result = await this.updateContactWithNewCall(
+          contact.UID,
+          {
+            date_appel: contact.date_appel,
+            statut_appel: contact.statut_appel,
+            commentaires_appel: contact.commentaires_appel
+          },
+          tableName
+        );
+
+        results.push({
+          uid: contact.UID,
+          success: result.success,
+          usedSlot: result.usedSlot,
+          error: result.error
+        });
+
+        if (result.success) {
+          successCount++;
+        } else {
+          failedCount++;
+        }
+
+      } catch (error) {
+        results.push({
+          uid: contact.UID,
+          success: false,
+          error: error instanceof Error ? error.message : 'Erreur inconnue'
+        });
+        failedCount++;
+      }
+
+      // Petit délai pour éviter de surcharger la base
+      if (importData.length > 10) {
+        await new Promise(resolve => setTimeout(resolve, 50));
+      }
+    }
+
+    return {
+      success: successCount,
+      failed: failedCount,
+      results
+    };
   }
 }
 

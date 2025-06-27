@@ -7,10 +7,11 @@ import { Button } from './ui/button';
 import { Separator } from './ui/separator';
 import { ScrollArea } from './ui/scroll-area';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip';
-import { User, Phone, Mail, FileText, MessageCircle, Calendar, Clock, Timer, MapPin, Building2, Zap } from 'lucide-react';
+import { User, Phone, Mail, FileText, MessageCircle, Calendar, Clock, Timer, MapPin, Building2, Zap, Loader2 } from 'lucide-react';
+import { uploadFileToStorage, listFilesForUID, deleteFileFromStorage, getDownloadUrl, StorageFile } from '../services/storageService';
 
 interface ContactInfoCardProps {
-  contact: Contact | null;
+  contact: any | null; // Accepte les données brutes de Supabase qui contiennent tous les champs
   theme: Theme;
   activeCallContactId: string | null;
   callStartTime: Date | null;
@@ -23,7 +24,7 @@ const ContactInfoCard: React.FC<ContactInfoCardProps> = ({ contact, theme, activ
   useEffect(() => {
     let interval: NodeJS.Timeout | null = null;
     
-    if (contact && activeCallContactId === contact.id && callStartTime) {
+    if (contact && activeCallContactId === (contact.UID || contact.id) && callStartTime) {
       interval = setInterval(() => {
         const now = new Date();
         const durationMs = now.getTime() - callStartTime.getTime();
@@ -91,7 +92,7 @@ const ContactInfoCard: React.FC<ContactInfoCardProps> = ({ contact, theme, activ
     return diffDays <= 7;
   };
 
-  const statusConfig = getStatusConfig(contact.statut);
+  const statusConfig = getStatusConfig(contact.statut_final || contact.statut || 'Non défini');
   const StatusIcon = statusConfig.icon;
 
   // Helper function pour afficher les valeurs avec fallback
@@ -107,9 +108,9 @@ const ContactInfoCard: React.FC<ContactInfoCardProps> = ({ contact, theme, activ
           {/* Header compact avec avatar et nom */}
           <div className="flex items-center gap-3 mb-4">
             <div className="relative flex-shrink-0">
-              <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-semibold shadow-lg shadow-blue-500/25">
-                {contact.prenom.charAt(0)}{contact.nom.charAt(0)}
-              </div>
+                          <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-semibold shadow-lg shadow-blue-500/25">
+              {contact.prenom?.charAt(0) || 'N'}{contact.nom?.charAt(0) || 'A'}
+            </div>
               <div className="absolute -inset-0.5 rounded-lg bg-gradient-to-br from-blue-500 to-purple-600 opacity-20 blur"></div>
             </div>
             
@@ -121,9 +122,9 @@ const ContactInfoCard: React.FC<ContactInfoCardProps> = ({ contact, theme, activ
                 )}
               </h2>
               <div className="text-xs text-slate-500 dark:text-slate-400 truncate">
-                {displayValue(contact.email)} | {displayValue(contact.telephone)}
+                {displayValue(contact.mail || contact.email)} | {displayValue(contact.numero || contact.telephone)}
               </div>
-              {isRecentCall(contact.dateAppel) && (
+              {isRecentCall(contact.date_appel_1 || contact.date_appel || contact.dateAppel) && (
                 <div className="flex items-center gap-1 mt-0.5">
                   <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></div>
                   <span className="text-green-600 dark:text-green-400 font-medium text-xs">Récent</span>
@@ -160,12 +161,12 @@ const ContactInfoCard: React.FC<ContactInfoCardProps> = ({ contact, theme, activ
           <div className="mb-4">
             <div className={`inline-flex items-center gap-2 px-2.5 py-1 rounded-md border text-xs font-medium ${statusConfig.color}`}>
               <StatusIcon className="h-3 w-3" />
-              {contact.statut}
+              {contact.statut_final || contact.statut || 'Non défini'}
             </div>
           </div>
 
           {/* Indicateur d'appel en cours */}
-          {contact && activeCallContactId === contact.id && callStartTime && (
+          {contact && activeCallContactId === (contact.UID || contact.id) && callStartTime && (
             <div className="mb-4">
               <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-md border text-xs font-medium bg-green-500/10 text-green-700 border-green-200 dark:bg-green-500/10 dark:text-green-400 dark:border-green-800 animate-pulse">
                 <div className="flex items-center gap-1">
@@ -181,128 +182,80 @@ const ContactInfoCard: React.FC<ContactInfoCardProps> = ({ contact, theme, activ
             </div>
           )}
 
-          {/* Informations compactes en grille */}
+          {/* Historique des appels */}
+          {(() => {
+            // Extraire les données d'historique d'appels depuis les données brutes
+            const callHistory = [];
+            for (let i = 1; i <= 4; i++) {
+              const dateKey = `date_appel_${i}`;
+              const statutKey = `statut_appel_${i}`;
+              const commentaireKey = `commentaires_appel_${i}`;
+              
+              // On considère qu'un appel existe s'il y a au moins une date ou un statut
+              const dateAppel = (contact as any)[dateKey] || '';
+              const statutAppel = (contact as any)[statutKey] || '';
+              const commentaireAppel = (contact as any)[commentaireKey] || '';
+              
+              if (dateAppel || statutAppel) {
+                callHistory.push({
+                  numero: i,
+                  date: dateAppel,
+                  statut: statutAppel,
+                  commentaire: commentaireAppel
+                });
+              }
+            }
+            
+            if (callHistory.length > 0) {
+              return (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Phone className="h-3.5 w-3.5 text-slate-500 dark:text-slate-400" />
+                    <span className="text-xs font-medium text-slate-700 dark:text-slate-300">
+                      Historique des appels ({callHistory.length})
+                    </span>
+                  </div>
+                  <div className="space-y-1.5 max-h-24 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-600">
+                    {callHistory.map((call) => (
+                      <div key={call.numero} className="bg-slate-50 dark:bg-slate-800/50 rounded-md p-2 text-xs">
+                        <div className="flex items-center justify-between mb-1">
+                          <div className="flex items-center gap-1.5">
+                            <div className="w-1.5 h-1.5 rounded-full bg-blue-500"></div>
+                            <span className="font-medium text-slate-700 dark:text-slate-300">
+                              Appel {call.numero}
+                            </span>
+                            {call.date && (
+                              <span className="text-slate-500 dark:text-slate-400">
+                                • {formatDate(call.date)}
+                              </span>
+                            )}
+                          </div>
+                          {call.statut && (
+                            <div className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300">
+                              {call.statut}
+                            </div>
+                          )}
+                        </div>
+                        {call.commentaire && (
+                          <p className="text-slate-600 dark:text-slate-400 line-clamp-2 leading-tight">
+                            {call.commentaire}
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            }
+            return null;
+          })()}
+
+          {/* Autres informations si nécessaire */}
           <div className="space-y-3">
             
-            {/* Informations personnelles groupées */}
-            <div className="bg-transparent dark:bg-transparent rounded-lg p-3 border">
-              <div className="text-xs font-medium text-slate-600 dark:text-slate-400 mb-2">
-                Informations personnelles
-              </div>
-              <div className="grid grid-cols-3 gap-2 text-xs">
-                <div>
-                  <div className="text-slate-500 dark:text-slate-400 mb-1">Sexe</div>
-                  <div className="font-medium">{displayValue(contact.sexe)}</div>
-                </div>
-                <div>
-                  <div className="text-slate-500 dark:text-slate-400 mb-1">Qualité</div>
-                  <div className="font-medium">{displayValue(contact.qualite)}</div>
-                </div>
-                <div>
-                  <div className="text-slate-500 dark:text-slate-400 mb-1">Type</div>
-                  <div className="font-medium">{displayValue(contact.type)}</div>
-                </div>
-              </div>
-            </div>
 
-            {/* Statuts groupés */}
-            <div className="bg-transparent dark:bg-transparent rounded-lg p-3 border">
-              <div className="text-xs font-medium text-slate-600 dark:text-slate-400 mb-2">
-                Statuts spécialisés
-              </div>
-              <div className="grid grid-cols-2 gap-2 text-xs">
-                <div>
-                  <div className="text-slate-500 dark:text-slate-400 mb-1">Statut appel</div>
-                  <div className="font-medium">{displayValue(contact.statutAppel)}</div>
-                </div>
-                <div>
-                  <div className="text-slate-500 dark:text-slate-400 mb-1">Statut RDV</div>
-                  <div className="font-medium">{displayValue(contact.statutRDV)}</div>
-                </div>
-              </div>
-            </div>
 
-            {/* Commentaires groupés */}
-            <div className="bg-transparent dark:bg-transparent rounded-lg p-3 border">
-              <div className="text-xs font-medium text-slate-600 dark:text-slate-400 mb-2 flex items-center gap-1">
-                <MessageCircle className="h-3 w-3" />
-                Commentaires
-              </div>
-              <div className="space-y-2 text-xs">
-                <div>
-                  <div className="text-slate-500 dark:text-slate-400 mb-1">Commentaire</div>
-                  <p className="text-slate-600 dark:text-slate-300 leading-relaxed">
-                    {contact.commentaire && contact.commentaire.trim() !== '' ? contact.commentaire : 'N/A'}
-                  </p>
-                </div>
-                <div>
-                  <div className="text-slate-500 dark:text-slate-400 mb-1">Commentaire RDV</div>
-                  <p className="text-slate-600 dark:text-slate-300 leading-relaxed">
-                    {displayValue(contact.commentaireRDV)}
-                  </p>
-                </div>
-              </div>
-            </div>
 
-            {/* Dates et planification groupées */}
-            <div className="bg-transparent dark:bg-transparent rounded-lg p-3 border">
-              <div className="text-xs font-medium text-slate-600 dark:text-slate-400 mb-2 flex items-center gap-1">
-                <Calendar className="h-3 w-3" />
-                Dates et planification
-              </div>
-              <div className="space-y-2 text-xs">
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <div className="text-slate-500 dark:text-slate-400 mb-1">Date générale</div>
-                    <div className="font-medium">
-                      {contact.date && contact.date !== 'N/A' ? formatDate(contact.date) : 'N/A'}
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-slate-500 dark:text-slate-400 mb-1">Ligne</div>
-                    <div className="font-medium">#{contact.numeroLigne}</div>
-                  </div>
-                </div>
-                
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <div className="text-slate-500 dark:text-slate-400 mb-1">Rappel</div>
-                    <div className="font-medium">
-                      {contact.dateRappel && contact.dateRappel !== 'N/A' ? formatDate(contact.dateRappel) : 'N/A'}
-                    </div>
-                    <div className="text-slate-500 dark:text-slate-400">
-                      {displayValue(contact.heureRappel)}
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-slate-500 dark:text-slate-400 mb-1">RDV</div>
-                    <div className="font-medium">
-                      {contact.dateRDV && contact.dateRDV !== 'N/A' ? formatDate(contact.dateRDV) : 'N/A'}
-                    </div>
-                    <div className="text-slate-500 dark:text-slate-400">
-                      {displayValue(contact.heureRDV)}
-                    </div>
-                  </div>
-                </div>
-
-                <div>
-                  <div className="text-slate-500 dark:text-slate-400 mb-1">Dernier appel</div>
-                  <div className="flex items-center justify-between">
-                    <div className="font-medium">
-                      {contact.dateAppel && contact.dateAppel !== 'N/A' ? formatDate(contact.dateAppel) : 'N/A'}
-                    </div>
-                    <div className="flex items-center gap-2 text-slate-500 dark:text-slate-400">
-                      <span>{displayValue(contact.heureAppel)}</span>
-                      <span>•</span>
-                      <div className="flex items-center gap-1">
-                        <Timer className="h-2.5 w-2.5" />
-                        <span>{displayValue(contact.dureeAppel)}</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
 
 
           </div>
@@ -490,7 +443,7 @@ const FileListWidget: React.FC<FileListWidgetProps> = ({ files, onDeleteFile, on
 };
 
 interface ClientFilesPanelProps {
-  contact: Contact | null;
+  contact: any | null; // Accepte les données brutes de Supabase qui contiennent tous les champs
   theme: Theme;
   showNotification: (type: 'success' | 'error' | 'info', message: string, duration?: number) => void;
   activeCallContactId: string | null;
@@ -499,63 +452,124 @@ interface ClientFilesPanelProps {
 
 export const ClientFilesPanel: React.FC<ClientFilesPanelProps> = ({ contact, theme, showNotification, activeCallContactId, callStartTime }) => {
   const [files, setFiles] = useState<ClientFile[]>([]);
+  const [uploadingFile, setUploadingFile] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
   
-  // 🔄 Effet pour détecter les changements du contact en temps réel
+  // 🔄 Effet pour charger les fichiers quand le contact change
   useEffect(() => {
-    if (contact) {
-      console.log('📱 Contact mis à jour dans le panneau latéral:', {
-        id: contact.id,
-        nom: contact.nom,
-        prenom: contact.prenom,
-        commentaire: contact.commentaire,
-        statut: contact.statut
-      });
+    const contactUID = contact?.UID || contact?.id;
+    if (contactUID) {
+      console.log('📱 Contact sélectionné - chargement des fichiers pour UID:', contactUID);
+      loadFilesForContact(contactUID);
+    } else {
+      setFiles([]);
     }
-  }, [contact]);
+  }, [contact?.UID, contact?.id]);
 
-  const handleFileDrop = (file: File) => {
-    if (!contact) {
+  // Charger les fichiers depuis Supabase Storage
+  const loadFilesForContact = async (uid: string) => {
+    setLoading(true);
+    try {
+      const result = await listFilesForUID(uid);
+      
+      if (result.success) {
+        // Convertir StorageFile vers ClientFile
+        const clientFiles: ClientFile[] = result.files.map(storageFile => ({
+          id: storageFile.id,
+          name: storageFile.name,
+          size: storageFile.size,
+          date: storageFile.date,
+          type: storageFile.type
+        }));
+        
+        setFiles(clientFiles);
+        console.log(`📁 ${clientFiles.length} fichier(s) chargé(s) pour ${uid}`);
+      } else {
+        console.error('Erreur chargement fichiers:', result.message);
+        if (result.message?.includes('not found')) {
+          // Le dossier n'existe pas encore, c'est normal
+          setFiles([]);
+        } else {
+          showNotification('error', result.message || 'Erreur lors du chargement des fichiers');
+        }
+      }
+    } catch (error) {
+      console.error('Erreur chargement fichiers:', error);
+      showNotification('error', 'Erreur technique lors du chargement des fichiers');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleFileDrop = async (file: File) => {
+    const contactUID = contact?.UID || contact?.id;
+    if (!contactUID) {
       showNotification('error', 'Veuillez sélectionner un contact avant d\'ajouter des fichiers.');
       return;
     }
 
-    const newFile: ClientFile = {
-      id: Date.now().toString(),
-      name: file.name,
-      size: `${(file.size / 1024 / 1024).toFixed(1)} MB`,
-      date: new Date().toLocaleDateString('fr-FR'),
-      type: getFileType(file.name),
-    };
+    setUploadingFile(file.name);
+    showNotification('info', `Upload de "${file.name}" en cours...`);
 
-    setFiles(prev => [...prev, newFile]);
-    showNotification('success', `Fichier "${file.name}" ajouté avec succès!`);
-  };
-
-  const getFileType = (fileName: string): ClientFile['type'] => {
-    const extension = fileName.split('.').pop()?.toLowerCase();
-    switch (extension) {
-      case 'pdf': return 'pdf';
-      case 'doc':
-      case 'docx': return 'doc';
-      case 'xls':
-      case 'xlsx': return 'xls';
-      case 'jpg':
-      case 'jpeg':
-      case 'png':
-      case 'gif': return 'img';
-      default: return 'other';
+    try {
+      const result = await uploadFileToStorage(file, contactUID);
+      
+      if (result.success) {
+        showNotification('success', result.message);
+        // Recharger la liste des fichiers
+        await loadFilesForContact(contactUID);
+      } else {
+        showNotification('error', result.message);
+      }
+    } catch (error) {
+      console.error('Erreur upload:', error);
+      showNotification('error', 'Erreur technique lors de l\'upload');
+    } finally {
+      setUploadingFile(null);
     }
   };
 
-  const handleDeleteFile = (fileId: string) => {
-    setFiles(prev => prev.filter(file => file.id !== fileId));
-    showNotification('info', 'Fichier supprimé.');
+  const handleDeleteFile = async (fileId: string) => {
+    const file = files.find(f => f.id === fileId);
+    const contactUID = contact?.UID || contact?.id;
+    if (!file || !contactUID) return;
+
+    if (!confirm(`Supprimer le fichier "${file.name}" ?`)) return;
+
+    try {
+      const result = await deleteFileFromStorage(file.name, contactUID);
+      
+      if (result.success) {
+        showNotification('success', result.message);
+        // Recharger la liste des fichiers
+        await loadFilesForContact(contactUID);
+      } else {
+        showNotification('error', result.message);
+      }
+    } catch (error) {
+      console.error('Erreur suppression:', error);
+      showNotification('error', 'Erreur technique lors de la suppression');
+    }
   };
 
-  const handleDownloadFile = (fileId: string) => {
+  const handleDownloadFile = async (fileId: string) => {
     const file = files.find(f => f.id === fileId);
-    if (file) {
-      showNotification('info', `Téléchargement de "${file.name}" démarré.`);
+    const contactUID = contact?.UID || contact?.id;
+    if (!file || !contactUID) return;
+
+    try {
+      const result = await getDownloadUrl(file.name, contactUID);
+      
+      if (result.success && result.url) {
+        // Ouvrir l'URL dans un nouvel onglet pour télécharger
+        window.open(result.url, '_blank');
+        showNotification('success', `Téléchargement de "${file.name}" démarré`);
+      } else {
+        showNotification('error', result.message || 'Erreur lors de la génération du lien de téléchargement');
+      }
+    } catch (error) {
+      console.error('Erreur téléchargement:', error);
+      showNotification('error', 'Erreur technique lors du téléchargement');
     }
   };
 
@@ -571,17 +585,26 @@ export const ClientFilesPanel: React.FC<ClientFilesPanelProps> = ({ contact, the
         <ClientFileDropZone 
           onFileDrop={handleFileDrop} 
           theme={theme} 
-          disabled={!contact}
+          disabled={!contact || !!uploadingFile}
         />
+        {uploadingFile && (
+          <div className="mt-2 flex items-center gap-2 text-xs text-blue-600 dark:text-blue-400">
+            <Loader2 className="h-3 w-3 animate-spin" />
+            <span>Upload de "{uploadingFile}" en cours...</span>
+          </div>
+        )}
       </div>
 
       {/* Section fichiers */}
       <div className="flex-1 flex flex-col overflow-hidden">
         <div className="shrink-0 flex items-center justify-between p-4 border-b">
           <h3 className="text-lg font-semibold">Fichiers du contact</h3>
-          <Badge variant="secondary" className="text-xs">
-            {files.length} fichier{files.length !== 1 ? 's' : ''}
-          </Badge>
+          <div className="flex items-center gap-2">
+            {loading && <Loader2 className="h-4 w-4 animate-spin" />}
+            <Badge variant="secondary" className="text-xs">
+              {files.length} fichier{files.length !== 1 ? 's' : ''}
+            </Badge>
+          </div>
         </div>
         <ScrollArea className="flex-1 p-4">
           <FileListWidget 
@@ -593,16 +616,7 @@ export const ClientFilesPanel: React.FC<ClientFilesPanelProps> = ({ contact, the
         </ScrollArea>
       </div>
 
-      {/* Note */}
-      <div className="shrink-0 p-3 border-t bg-muted/30">
-        <div className="flex items-start gap-2 text-xs text-muted-foreground">
-          <span className="text-yellow-500">💡</span>
-          <div>
-            <span className="font-medium">Note:</span> Cette fonctionnalité est en mode démo. 
-            Pour une utilisation en production, une intégration avec un service de stockage est nécessaire.
-          </div>
-        </div>
-      </div>
+
     </div>
   );
 };

@@ -144,7 +144,7 @@ export const Input: React.FC<InputProps> = ({
       className={cn(
         "transition-all duration-200",
         "border-slate-300 dark:border-slate-600 hover:border-slate-400 dark:hover:border-slate-500 focus:border-primary/50",
-        "bg-white dark:bg-slate-800 text-slate-900 dark:text-white",
+        "bg-input text-foreground",
         "placeholder:text-slate-500 dark:placeholder:text-slate-400",
         "focus-visible:ring-2 focus-visible:ring-primary/20",
         className
@@ -176,7 +176,7 @@ export const Select: React.FC<SelectProps> = ({
       <SelectTrigger className={cn(
         "transition-all duration-200",
         "border-slate-300 dark:border-slate-600 hover:border-slate-400 dark:hover:border-slate-500 focus:border-primary/50",
-        "bg-white dark:bg-slate-800 text-slate-900 dark:text-white",
+        "bg-input text-foreground",
         "focus-visible:ring-2 focus-visible:ring-primary/20",
         className
       )}>
@@ -407,14 +407,14 @@ export const Modal: React.FC<ModalProps> = ({
       {/* Modal */}
       <Card className={cn(
         "relative w-full mx-4 animate-in zoom-in-95 duration-200",
-        "bg-white dark:bg-slate-900 border shadow-2xl",
+        "bg-card text-card-foreground border shadow-2xl",
         "max-h-[90vh] overflow-y-auto",
         sizeClasses[size],
         className
       )}>
         {title && (
-          <div className="flex items-center justify-between p-6 border-b bg-white dark:bg-slate-900 sticky top-0 z-10">
-            <h2 className="text-lg font-semibold text-slate-900 dark:text-white">{title}</h2>
+          <div className="flex items-center justify-between p-6 border-b bg-card text-card-foreground sticky top-0 z-10">
+            <h2 className="text-lg font-semibold text-card-foreground">{title}</h2>
             <Button
               onClick={onClose}
               variant="ghost"
@@ -426,7 +426,7 @@ export const Modal: React.FC<ModalProps> = ({
           </div>
         )}
         
-        <CardContent className="p-6 bg-white dark:bg-slate-900">
+        <CardContent className="p-6 bg-card text-card-foreground">
           {children}
         </CardContent>
       </Card>

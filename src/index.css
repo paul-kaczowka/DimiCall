@@ -1,43 +1,55 @@
+@config "../tailwind.config.js";
+
 @import "tailwindcss";
+
+@custom-variant dark (&:is(.dark *));
 
 /* Variables CSS personnalisées pour le design ultra moderne */
 :root {
-  /* Couleurs principales ultra modernes */
-  --primary: 220 100% 60%;
+  /* Couleurs principales ultra modernes - AMÉLIORÉES POUR LE MODE CLAIR */
+  --primary: 213 94% 68%; /* Bleu moderne plus vibrant */
   --primary-foreground: 0 0% 100%;
-  --secondary: 220 14% 96%;
-  --secondary-foreground: 220 9% 46%;
-  --accent: 220 14% 96%;
-  --accent-foreground: 220 9% 46%;
-  --muted: 220 14% 96%;
-  --muted-foreground: 220 9% 46%;
-  
-  /* Backgrounds ultra épurés */
-  --background: 0 0% 100%;
-  --foreground: 220 9% 9%;
-  --card: 0 0% 100%;
-  --card-foreground: 220 9% 9%;
+  --secondary: 210 40% 95%; /* Fond secondaire plus doux */
+  --secondary-foreground: 215 25% 27%; /* Texte plus contrasté */
+  --accent: 212 60% 92%; /* Accent plus subtil et élégant */
+  --accent-foreground: 215 30% 25%;
+  --muted: 210 20% 96%; /* Couleur sourde plus propre */
+  --muted-foreground: 215 16% 47%; /* Meilleur contraste */
+
+  /* Backgrounds ultra épurés - AMÉLIORÉS */
+  --background: 0 0% 98%; /* Blanc cassé plus doux pour les yeux */
+  --foreground: 215 25% 15%; /* Texte principal plus doux que le noir pur */
+  --card: 0 0% 100%; /* Cartes en blanc pur */
+  --card-foreground: 215 25% 15%;
   --popover: 0 0% 100%;
-  --popover-foreground: 220 9% 9%;
-  
-  /* Bordures minimalistes */
-  --border: 220 13% 91%;
-  --input: 220 13% 91%;
-  --ring: 220 100% 60%;
-  
+  --popover-foreground: 215 25% 15%;
+
+  /* Bordures minimalistes - AMÉLIORÉES */
+  --border: 214 32% 91%; /* Bordures avec une teinte bleue subtile */
+  --input: 214 25% 93%; /* Inputs avec fond légèrement teinté */
+  --ring: 213 94% 68%; /* Ring focus assorti au primary */
+
   /* États interactifs */
   --destructive: 0 84% 60%;
   --destructive-foreground: 0 0% 100%;
-  
+
   /* Radius ultra moderne */
   --radius: 0.75rem;
-  
-  /* Ombres subtiles */
-  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
-  --shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
-  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
-  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+
+  /* Ombres subtiles - AMÉLIORÉES */
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.03);
+  --shadow: 0 1px 3px 0 rgb(0 0 0 / 0.06), 0 1px 2px -1px rgb(0 0 0 / 0.06);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.07), 0 2px 4px -2px rgb(0 0 0 / 0.07);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.08), 0 4px 6px -4px rgb(0 0 0 / 0.08);
   --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
+  --sidebar: hsl(0 0% 98%);
+  --sidebar-foreground: hsl(240 5.3% 26.1%);
+  --sidebar-primary: hsl(240 5.9% 10%);
+  --sidebar-primary-foreground: hsl(0 0% 98%);
+  --sidebar-accent: hsl(240 4.8% 95.9%);
+  --sidebar-accent-foreground: hsl(240 5.9% 10%);
+  --sidebar-border: hsl(220 13% 91%);
+  --sidebar-ring: hsl(217.2 91.2% 59.8%);
 }
 
 .dark {
@@ -50,25 +62,58 @@
   --accent-foreground: 220 9% 91%;
   --muted: 220 9% 9%;
   --muted-foreground: 220 9% 65%;
-  
+
   --background: 220 9% 4%;
   --foreground: 220 9% 91%;
   --card: 220 9% 6%;
   --card-foreground: 220 9% 91%;
   --popover: 220 9% 6%;
   --popover-foreground: 220 9% 91%;
-  
+
   --border: 220 9% 15%;
   --input: 220 9% 15%;
   --ring: 220 100% 65%;
-  
+
   --destructive: 0 84% 65%;
   --destructive-foreground: 220 9% 9%;
+  --sidebar: hsl(240 5.9% 10%);
+  --sidebar-foreground: hsl(240 4.8% 95.9%);
+  --sidebar-primary: hsl(224.3 76.3% 48%);
+  --sidebar-primary-foreground: hsl(0 0% 100%);
+  --sidebar-accent: hsl(240 3.7% 15.9%);
+  --sidebar-accent-foreground: hsl(240 4.8% 95.9%);
+  --sidebar-border: hsl(240 3.7% 15.9%);
+  --sidebar-ring: hsl(217.2 91.2% 59.8%);
 }
+
+/* Force tous les sidebar-gap à être masqués - FIX ESPACE VIDE */
+[data-slot="sidebar-gap"] {
+  display: none !important;
+  width: 0 !important;
+  max-width: 0 !important;
+}
+
+/* Sidebar complètement supprimée - plus besoin de CSS spécifique */
 
 /* Reset et base ultra propre */
 * {
   border-color: hsl(var(--border));
+}
+
+/* Suppression des contours de focus indésirables */
+button:focus:not(:focus-visible),
+[role="button"]:focus:not(:focus-visible),
+[data-slot="dropdown-menu-trigger"]:focus:not(:focus-visible) {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+/* Garde le focus visible pour l'accessibilité clavier */
+button:focus-visible,
+[role="button"]:focus-visible,
+[data-slot="dropdown-menu-trigger"]:focus-visible {
+  outline: 2px solid hsl(var(--ring)) !important;
+  outline-offset: 2px !important;
 }
 
 body {
@@ -129,13 +174,41 @@ body {
 
 .glass-effect {
   backdrop-filter: blur(20px) saturate(180%);
-  background-color: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background-color: rgba(255, 255, 255, 0.7); /* Plus opaque en mode clair */
+  border: 1px solid rgba(59, 130, 246, 0.1); /* Bordure bleue subtile */
 }
 
 .dark .glass-effect {
   background-color: rgba(0, 0, 0, 0.2);
   border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+/* Améliorations spécifiques au mode clair */
+.ribbon-button-modern {
+  /* Amélioration des boutons ribbon en mode clair */
+  background: linear-gradient(135deg, 
+    hsl(var(--card)) 0%, 
+    hsl(var(--accent)) 100%);
+  border: 1px solid hsl(var(--border));
+  box-shadow: 0 1px 3px 0 rgb(59 130 246 / 0.05), 
+              0 1px 2px -1px rgb(59 130 246 / 0.05);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.ribbon-button-modern:hover {
+  background: linear-gradient(135deg, 
+    hsl(var(--accent)) 0%, 
+    hsl(var(--primary) / 0.1) 100%);
+  border-color: hsl(var(--primary) / 0.3);
+  box-shadow: 0 4px 12px 0 rgb(59 130 246 / 0.15), 
+              0 2px 4px -1px rgb(59 130 246 / 0.1);
+}
+
+.dark .ribbon-button-modern {
+  /* Conserver l'apparence sombre en mode sombre */
+  background: hsl(var(--card));
+  border: 1px solid hsl(var(--border));
+  box-shadow: var(--shadow-sm);
 }
 
 .gradient-border {
@@ -215,14 +288,29 @@ body {
 
 /* Cards ultra modernes */
 .card-ultra {
-  background: hsl(var(--card));
+  background: linear-gradient(135deg, 
+    hsl(var(--card)) 0%, 
+    hsl(var(--accent) / 0.3) 100%);
   border: 1px solid hsl(var(--border));
   border-radius: var(--radius);
-  box-shadow: var(--shadow-sm);
-  transition: all 0.2s ease-in-out;
+  box-shadow: 0 1px 3px 0 rgb(59 130 246 / 0.08), 
+              0 1px 2px -1px rgb(59 130 246 / 0.08);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .card-ultra:hover {
+  box-shadow: 0 4px 12px 0 rgb(59 130 246 / 0.12), 
+              0 2px 4px -1px rgb(59 130 246 / 0.12);
+  border-color: hsl(var(--primary) / 0.2);
+  transform: translateY(-1px);
+}
+
+.dark .card-ultra {
+  background: hsl(var(--card));
+  box-shadow: var(--shadow-sm);
+}
+
+.dark .card-ultra:hover {
   box-shadow: var(--shadow-md);
   transform: translateY(-1px);
 }
@@ -257,20 +345,36 @@ body {
   width: 100%;
   border-radius: var(--radius);
   border: 1px solid hsl(var(--input));
-  background-color: hsl(var(--background));
+  background: linear-gradient(135deg, 
+    hsl(var(--background)) 0%, 
+    hsl(var(--card)) 100%);
   padding: 0.5rem 0.75rem;
   font-size: 0.875rem;
-  transition: all 0.15s ease-in-out;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 1px 3px 0 rgb(59 130 246 / 0.05);
 }
 
 .input-ultra:focus {
   outline: none;
   border-color: hsl(var(--ring));
-  box-shadow: 0 0 0 2px hsl(var(--ring) / 0.2);
+  box-shadow: 0 0 0 3px hsl(var(--ring) / 0.15), 
+              0 2px 6px 0 rgb(59 130 246 / 0.1);
+  background: hsl(var(--card));
+  transform: translateY(-1px);
 }
 
 .input-ultra::placeholder {
   color: hsl(var(--muted-foreground));
+}
+
+.dark .input-ultra {
+  background-color: hsl(var(--background));
+  box-shadow: var(--shadow-sm);
+}
+
+.dark .input-ultra:focus {
+  box-shadow: 0 0 0 2px hsl(var(--ring) / 0.2);
+  transform: none;
 }
 
 /* Tables ultra modernes */
@@ -280,29 +384,56 @@ body {
   border-spacing: 0;
   border-radius: var(--radius);
   overflow: hidden;
-  box-shadow: var(--shadow-sm);
+  box-shadow: 0 2px 8px 0 rgb(59 130 246 / 0.08), 
+              0 1px 3px 0 rgb(59 130 246 / 0.08);
+  border: 1px solid hsl(var(--border));
 }
 
 .table-ultra th {
-  background-color: hsl(var(--muted));
+  background: linear-gradient(135deg, 
+    hsl(var(--muted)) 0%, 
+    hsl(var(--accent)) 100%);
   font-weight: 600;
   text-align: left;
   padding: 1rem;
   border-bottom: 1px solid hsl(var(--border));
+  color: hsl(var(--muted-foreground));
 }
 
 .table-ultra td {
   padding: 0.75rem 1rem;
   border-bottom: 1px solid hsl(var(--border));
-  transition: background-color 0.15s ease-in-out;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  background-color: hsl(var(--card));
 }
 
 .table-ultra tbody tr:hover td {
-  background-color: hsl(var(--muted) / 0.5);
+  background: linear-gradient(135deg, 
+    hsl(var(--accent) / 0.3) 0%, 
+    hsl(var(--primary) / 0.05) 100%);
+  transform: translateX(2px);
 }
 
 .table-ultra tbody tr:last-child td {
   border-bottom: none;
+}
+
+.dark .table-ultra {
+  box-shadow: var(--shadow-sm);
+  border: 1px solid hsl(var(--border));
+}
+
+.dark .table-ultra th {
+  background-color: hsl(var(--muted));
+}
+
+.dark .table-ultra td {
+  background-color: transparent;
+}
+
+.dark .table-ultra tbody tr:hover td {
+  background-color: hsl(var(--muted) / 0.5);
+  transform: none;
 }
 
 /* Responsive ultra moderne */
@@ -310,11 +441,11 @@ body {
   .mobile-stack {
     flex-direction: column;
   }
-  
+
   .mobile-full {
     width: 100%;
   }
-  
+
   .mobile-hidden {
     display: none;
   }
@@ -509,7 +640,7 @@ body {
     transform: translateY(20px);
     transition: opacity 0.6s ease-out, transform 0.6s ease-out;
   }
-  
+
   .animate-on-scroll.visible {
     opacity: 1;
     transform: translateY(0);
@@ -985,7 +1116,7 @@ table:has(.sticky-table-header),
     animation: none !important;
     transition: opacity 0.2s ease !important;
   }
-  
+
   .toggle-button-pulse::before {
     animation: none !important;
   }
@@ -1124,5 +1255,129 @@ table:has(.sticky-table-header),
 table {
   border-collapse: separate;
   border-spacing: 0;
+}
+
+/* CSS pour éviter les conflits entre les deux types de tables */
+
+/* Isolation pour VirtualizedSupabaseTable - CSS Grid */
+.virtualized-supabase-table {
+  isolation: isolate;
+  contain: layout style;
+}
+
+.virtualized-table-header {
+  contain: layout style;
+}
+
+.virtualized-table-body {
+  contain: layout style;
+}
+
+.virtualized-table-content {
+  contain: layout style;
+}
+
+/* S'assurer que les tables HTML traditionnelles ne sont pas affectées */
+.virtualized-supabase-table table,
+.virtualized-supabase-table thead,
+.virtualized-supabase-table tbody,
+.virtualized-supabase-table tr,
+.virtualized-supabase-table td,
+.virtualized-supabase-table th {
+  display: none !important;
+}
+
+/* Réinitialiser display pour les éléments grid dans VirtualizedSupabaseTable */
+.virtualized-supabase-table .virtualized-table-header,
+.virtualized-supabase-table .virtualized-table-body {
+  display: flex !important;
+}
+
+.virtualized-supabase-table .virtualized-table-header > div {
+  display: grid !important;
+}
+
+/* Empêcher l'imbrication de grilles */
+.virtualized-supabase-table .virtualized-table-body > div {
+  display: block !important;
+}
+
+.virtualized-supabase-table .virtualized-table-body > div > div {
+  display: grid !important;
+}
+
+/* S'assurer que ContactTable (HTML table) reste en HTML natif */
+.contact-table-container table {
+  display: table !important;
+}
+
+.contact-table-container thead {
+  display: table-header-group !important;
+}
+
+.contact-table-container tbody {
+  display: table-row-group !important;
+}
+
+.contact-table-container tr {
+  display: table-row !important;
+}
+
+.contact-table-container td,
+.contact-table-container th {
+  display: table-cell !important;
+}
+
+/* Styles pour la synchronisation du scroll horizontal */
+.scrollbar-hidden {
+  /* Firefox */
+  scrollbar-width: none;
+  /* Safari et Chrome */
+  -ms-overflow-style: none;
+}
+
+.scrollbar-hidden::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+  background: transparent;
+}
+
+.scrollbar-hidden::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scrollbar-hidden::-webkit-scrollbar-thumb {
+  background: transparent;
+}
+
+.scrollbar-hidden::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* S'assurer que l'en-tête reste synchronisé */
+.virtualized-table-header {
+  position: relative;
+  z-index: 10;
+}
+
+@theme inline {
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
 }
 

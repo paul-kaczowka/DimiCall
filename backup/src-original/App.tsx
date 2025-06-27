@@ -8,6 +8,7 @@ import { ClientFilesPanel } from './components/ClientFilesPanel';
 import { Button, Input, Select, ProgressDonut, DropZoneOverlay, Modal } from './components/Common';
 import { SupabaseDataDialog } from './components/SupabaseDataDialog';
 import { loadContacts, saveContacts, importContactsFromFile, exportContactsToFile, loadCallStates, saveCallStates, formatPhoneNumber } from './services/dataService';
+import { searchLinkedIn, searchGoogle } from './lib/utils';
 import { v4 as uuidv4 } from 'uuid';
 
 
@@ -129,8 +130,7 @@ const App: React.FC = () => {
       showNotification('info', "Sélectionnez un contact pour la recherche LinkedIn.");
       return;
     }
-    const query = `${target.prenom} ${target.nom}`;
-    window.open(`https://www.linkedin.com/search/results/people/?keywords=${encodeURIComponent(query)}`, '_blank');
+    searchLinkedIn(target.prenom, target.nom);
   }, [selectedContact, showNotification]);
 
   const handleGoogleSearch = useCallback((contact?: Contact) => {
@@ -139,8 +139,7 @@ const App: React.FC = () => {
       showNotification('info', "Sélectionnez un contact pour la recherche Google.");
       return;
     }
-    const query = `${target.prenom} ${target.nom}`;
-    window.open(`https://www.google.com/search?q=${encodeURIComponent(query)}`, '_blank');
+    searchGoogle(target.prenom, target.nom);
   }, [selectedContact, showNotification]);
 
   const handleSms = useCallback((contact?: Contact) => {
@@ -449,7 +448,7 @@ const App: React.FC = () => {
             <RibbonButton onClick={() => selectedContact && setIsEmailDialogOpen(true)} icon={<IconMail />} label="Email" disabled={!selectedContact} />
             <RibbonButton onClick={() => handleSms()} icon={<IconSms />} label="SMS" disabled={!selectedContact} />
             <RibbonButton onClick={() => selectedContact && setIsRappelDialogOpen(true)} icon={<IconReminder />} label="Rappel" disabled={!selectedContact} />
-            <RibbonButton onClick={() => setIsCalendarDialogOpen(true)} icon={<IconCalendar />} label="RDV" />
+            <RibbonButton onClick={() => setIsCalendarDialogOpen(true)} icon={<IconCalendar />} label="Cal.com" />
             <RibbonButton onClick={() => selectedContact && setIsQualificationDialogOpen(true)} icon={<IconQualification />} label="Qualif." disabled={!selectedContact} />
           </div>
           <div className={`flex flex-wrap gap-1 p-1 border-r ${theme === Theme.Dark ? 'border-oled-border/50' : 'border-light-border'} pr-1.5 mr-1`}>

@@ -29,7 +29,7 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
   const [isEmbedReady, setIsEmbedReady] = useState(false);
 
   // Configuration Cal.com
-  const calLink = "dimitri-morel-arcanis-conseil/audit-patrimonial";
+  const calLink = "dimitri-morel-arcanis-conseil/audit-patrimonial?overlayCalendar=true";
   const calUrl = `https://cal.com/${calLink}`;
 
   // Réinitialiser l'état quand le modal s'ouvre
@@ -60,7 +60,7 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
     if (contact.prenom) {
       config.Prenom = contact.prenom;
     }
-    if (contact.email) {
+    if (contact.email && contact.email.trim() !== '') {
       config.email = contact.email;
     }
     if (contact.telephone) {
@@ -252,7 +252,7 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
     if (contact) {
       if (contact.nom) queryParams.append('name', contact.nom);
       if (contact.prenom) queryParams.append('Prenom', contact.prenom);
-      if (contact.email) queryParams.append('email', contact.email);
+      if (contact.email && contact.email.trim() !== '') queryParams.append('email', contact.email);
       if (contact.telephone) {
         let phoneNumber = contact.telephone.replace(/[\s\-\(\)]/g, '');
         if (!phoneNumber.startsWith('+')) {

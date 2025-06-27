@@ -266,7 +266,7 @@ export const generateGmailComposeUrl = (
   nom: string, // Full name (Prénom Nom)
   emailType: EmailType,
   civility: Civility,
-  signatureName: string = "Dimitri MOREL - Arcanis Conseil"
+  signatureName: string = ""
 ): string => {
   const titre = civility === Civility.Monsieur ? "Monsieur" : "Madame";
   const contactLastName = nom.split(' ').slice(1).join(' ') || nom; // Attempt to get last name
@@ -287,7 +287,7 @@ export const generateGmailComposeUrl = (
     `l'optimisation de votre patrimoine.\n\n` +
     `Vous pouvez également visiter notre site internet pour de plus amples renseignements : www.arcanis-conseil.fr\n\n` +
     `N'hésitez pas à revenir vers moi en cas de question ou d'un besoin supplémentaire d'information.\n\n` +
-    `Bien cordialement,\n${signatureName}`;
+    `Bien cordialement,${signatureName ? `\n${signatureName}` : ''}`;
 
   switch (emailType) {
     case EmailType.D0Visio:
@@ -319,7 +319,7 @@ export const generateGmailComposeUrl = (
         `Je vous envoie l'adresse de notre site web que vous puissiez en savoir d'avantage : https://arcanis-conseil.fr\n\n` +
         `Le site est avant tout une vitrine, le mieux est de m'appeler si vous souhaitez davantage d'informations ` +
         `ou de prendre un créneau de 30 minutes dans mon agenda via ce lien : https://calendly.com/dimitri-morel-arcanis-conseil/audit\n\n` +
-        `Bien à vous,\n${signatureName}`;
+        `Bien à vous,${signatureName ? `\n${signatureName}` : ''}`;
       break;
   }
 
