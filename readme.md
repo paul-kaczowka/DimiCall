@@ -1,2 +1,0 @@
-# DimiCall
-We love Warframe
