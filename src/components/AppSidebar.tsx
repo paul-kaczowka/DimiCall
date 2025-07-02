@@ -21,8 +21,8 @@ import {
 } from '@/components/ui/dropdown-menu';
 
 interface AppSidebarProps {
-  activeTab: 'dimicall' | 'dimitable';
-  onTabChange: (tab: 'dimicall' | 'dimitable') => void;
+  activeTab: 'dimicall';
+  onTabChange: (tab: 'dimicall') => void;
   onSettingsClick: () => void;
   userName?: string;
   userEmail?: string;
@@ -69,22 +69,7 @@ export function AppSidebar({
             </SidebarMenuButton>
           </SidebarMenuItem>
 
-          {/* DimiTable Tab */}
-          <SidebarMenuItem>
-            <SidebarMenuButton
-              isActive={activeTab === 'dimitable'}
-              onClick={() => onTabChange('dimitable')}
-              className="w-full justify-start gap-3"
-            >
-              <div className="w-4 h-4 bg-gradient-to-br from-green-500 to-emerald-600 rounded-sm" />
-              <span>DimiTable</span>
-              {activeTab === 'dimitable' && (
-                <SidebarMenuBadge>
-                  <div className="w-2 h-2 bg-green-500 rounded-full" />
-                </SidebarMenuBadge>
-              )}
-            </SidebarMenuButton>
-          </SidebarMenuItem>
+
 
           {/* Settings */}
           <SidebarMenuItem>

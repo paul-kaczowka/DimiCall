@@ -25,9 +25,9 @@ import {
 
 import { useAdb } from './hooks/useAdb';
 import { v4 as uuidv4 } from 'uuid';
-import { Card, CardContent } from './components/ui/card';
-import { Badge } from './components/ui/badge';
-import { Progress } from './components/ui/progress';
+import { Card, CardContent } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Progress } from '@/components/ui/progress';
 import { cn, searchLinkedIn, searchGoogle } from './lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -47,14 +47,14 @@ import {
   Download, Keyboard, RefreshCw, Sun, Moon, Columns, X, Filter, Infinity, 
   Upload, Smartphone, Wifi, WifiOff, Loader2, FileSpreadsheet, Settings2, Eye
 } from 'lucide-react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from './components/ui/dialog';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './components/ui/tooltip';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { DropZoneOverlay } from './components/Common';
 import { CalendarModal } from './components/CalendarModal';
 import { AuthModal } from './components/AuthModal';
 import { UserProfileCard } from './components/UserProfileCard';
-import { useCustomAuth } from './lib/auth-client';
-import { DimiTable } from './components/DimiTable';
+import { useSupabaseAuth } from './lib/auth-client';
+
 import { ShortcutConfigDialog } from './components/ShortcutConfigDialog';
 import { ShortcutIndicator } from './components/ShortcutIndicator';
 import { shortcutService } from './services/shortcutService';
@@ -103,15 +103,14 @@ const DonutChart: React.FC<{ progress: number; size?: number }> = ({ progress, s
 
 const App: React.FC = () => {
   // Authentication hook
-  const auth = useCustomAuth();
+  const auth = useSupabaseAuth();
   
   // Authentication states
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
-  const [hasSpecialAccess, setHasSpecialAccess] = useState(false);
   
   // State declarations
   const [theme, setTheme] = useState<Theme>(Theme.Dark);
-  const [activeMenuTab, setActiveMenuTab] = useState<'dimicall' | 'dimitable'>('dimicall');
+  const [activeMenuTab, setActiveMenuTab] = useState<'dimicall'>('dimicall');
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [callStates, setCallStates] = useState<CallStates>({});
   const [searchTerm, setSearchTerm] = useState('');
@@ -137,7 +136,7 @@ const App: React.FC = () => {
 
   const [isAdbLogsDialogOpen, setIsAdbLogsDialogOpen] = useState(false);
 
-  const [notifications, setNotifications] = useState<{ id: string; type: 'success' | 'error' | 'info'; message: string; duration: number }[]>([]);
+
   const [importProgress, setImportProgress] = useState<{ percentage: number; message: string } | null>(null);
   
   const [autoSearchMode, setAutoSearchMode] = useState<'disabled' | 'linkedin' | 'google'>('disabled');
@@ -196,13 +195,17 @@ Dimitri MOREL - Arcanis Conseil`;
   // État intelligent pour les colonnes visibles basé sur les données réelles
   const [visibleColumns, setVisibleColumns] = useState<Record<string, boolean>>({});
   const [availableColumns, setAvailableColumns] = useState<string[]>([]);
+  const [availableDataKeys, setAvailableDataKeys] = useState<(keyof Contact | 'actions' | null)[]>([]);
 
   // Fonction pour détecter les colonnes disponibles dans les données
   const detectAvailableColumns = useCallback((contactsData: Contact[]) => {
     if (!contactsData || contactsData.length === 0) {
       // Colonnes par défaut minimales si pas de données
       const defaultColumns = ["#", "Prénom", "Nom", "Téléphone", "Mail", "Statut", "Actions"];
+      const defaultDataKeys = ['numeroLigne', 'prenom', 'nom', 'telephone', 'email', 'statut', 'actions'] as (keyof Contact | 'actions' | null)[];
+      
       setAvailableColumns(defaultColumns);
+      setAvailableDataKeys(defaultDataKeys);
       
       // Initialiser la visibilité pour les colonnes par défaut
       setVisibleColumns(prevVisible => {
@@ -220,6 +223,7 @@ Dimitri MOREL - Arcanis Conseil`;
     const sample = contactsData.slice(0, sampleSize);
     
     const detectedColumns = new Set<string>();
+    const detectedDataKeys: (keyof Contact | 'actions' | null)[] = [];
     
     // Toujours inclure les colonnes essentielles ET importantes par défaut
     const alwaysIncludeColumns = [
@@ -229,10 +233,21 @@ Dimitri MOREL - Arcanis Conseil`;
       "Date Appel", "Heure Appel", "Durée Appel"
     ];
     
-    alwaysIncludeColumns.forEach(col => detectedColumns.add(col));
+    const alwaysIncludeDataKeys = [
+      'numeroLigne', 'prenom', 'nom', 'actions',
+      'telephone', 'email', 'statut', 'commentaire',
+      'dateRappel', 'heureRappel', 'dateRDV', 'heureRDV',
+      'dateAppel', 'heureAppel', 'dureeAppel'
+    ] as (keyof Contact | 'actions')[];
+    
+    alwaysIncludeColumns.forEach((col, index) => {
+      detectedColumns.add(col);
+      detectedDataKeys.push(alwaysIncludeDataKeys[index] || null);
+    });
     
     // Vérifier les colonnes optionnelles pour voir si elles contiennent des données
     const optionalColumns = ["Sexe", "Don", "Qualité", "Type", "Date", "UID"];
+    const optionalDataKeys = ['sexe', 'don', 'qualite', 'type', 'date', 'uid'] as (keyof Contact)[];
     
     COLUMN_HEADERS.forEach((header, index) => {
       if (alwaysIncludeColumns.includes(header)) return; // Déjà incluse
@@ -248,11 +263,13 @@ Dimitri MOREL - Arcanis Conseil`;
       
       if (hasData) {
         detectedColumns.add(header);
+        detectedDataKeys.push(dataKey as keyof Contact);
       }
     });
-    
+
     const newAvailableColumns = Array.from(detectedColumns);
     setAvailableColumns(newAvailableColumns);
+    setAvailableDataKeys(detectedDataKeys);
     
     // Mettre à jour la visibilité en utilisant une fonction callback pour éviter la dépendance circulaire
     setVisibleColumns(prevVisible => {
@@ -306,37 +323,27 @@ Dimitri MOREL - Arcanis Conseil`;
 
   // Stable helper functions
   const showNotification = useCallback((type: 'success' | 'error' | 'info', message: string, duration: number = 3000) => {
-    const id = uuidv4();
-    setNotifications(prev => [...prev, { id, type, message, duration }]);
-    setTimeout(() => {
-      setNotifications(prev => prev.filter(n => n.id !== id));
-    }, duration);
+    // Notifications désactivées - fonction no-op
+    return;
   }, []);
 
   // Handler pour l'authentification réussie
-  const handleAuthenticated = useCallback((specialAccess: boolean) => {
-    setHasSpecialAccess(specialAccess);
+  const handleAuthenticated = useCallback(() => {
     setIsAuthModalOpen(false);
-    showNotification('success', `Bienvenue ${auth.user?.firstName} ${auth.user?.lastName}!`, 3000);
+    showNotification('success', `Bienvenue ${auth.user?.email}!`, 3000);
   }, [auth.user, showNotification]);
 
-  // Effect pour vérifier l'authentification au démarrage
+  // Effect pour vérifier l'authentification au démarrage et fermer la modale après connexion
   useEffect(() => {
     if (!auth.isAuthenticated) {
       setIsAuthModalOpen(true);
     } else {
-      // Vérifier l'accès spécial si l'utilisateur est authentifié
-      setHasSpecialAccess(auth.checkSpecialAccess());
+      // Utilisateur authentifié : fermer la modale sans notification
+      setIsAuthModalOpen(false);
     }
   }, [auth.isAuthenticated]);
 
-  // Effect pour rediriger vers DimiCall si pas d'accès spécial à DimiTable
-  useEffect(() => {
-    if (activeMenuTab === 'dimitable' && !hasSpecialAccess) {
-      setActiveMenuTab('dimicall');
-      showNotification('info', 'Accès privilégié requis pour DimiTable', 3000);
-    }
-  }, [activeMenuTab, hasSpecialAccess, showNotification]);
+
 
   const updateContact = useCallback(async (updatedFields: Partial<Contact> & { id: string }) => {
     // Utiliser une fonction de mise à jour pour éviter les stale closures
@@ -1072,70 +1079,75 @@ Dimitri MOREL - Arcanis Conseil`;
   const handleImportFile = async (droppedFiles: FileList) => {
     if (droppedFiles && droppedFiles[0]) {
       const file = droppedFiles[0];
-      const fileSizeMB = file.size / (1024 * 1024);
+      await handleSingleFileImport(file);
+    }
+  };
+
+  // Nouvelle fonction pour gérer l'import d'un seul fichier (utilisée par le drag & drop)
+  const handleSingleFileImport = async (file: File) => {
+    const fileSizeMB = file.size / (1024 * 1024);
+    
+    setImportProgress({ 
+      message: `Importation de "${file.name}" (${fileSizeMB.toFixed(1)} MB)...`, 
+      percentage: 0 
+    });
+    
+    try {
+      // Analyse de la taille du fichier
+      if (fileSizeMB > 50) {
+        setImportProgress({ 
+          message: `⚠️ Fichier volumineux détecté (${fileSizeMB.toFixed(1)} MB). Traitement optimisé...`, 
+          percentage: 5 
+        });
+        await new Promise(res => setTimeout(res, 1000));
+      }
       
-      setImportProgress({ 
-        message: `Importation de "${file.name}" (${fileSizeMB.toFixed(1)} MB)...`, 
-        percentage: 0 
+      setImportProgress({ message: `📖 Lecture du fichier...`, percentage: 10 });
+      await new Promise(res => setTimeout(res, 200));
+      
+      setImportProgress({ message: `⚙️ Traitement par chunks...`, percentage: 20 });
+      
+      // Import optimisé
+      const newContacts = await importContactsFromFile(file);
+      
+      setImportProgress({ message: `📝 Préparation des données...`, percentage: 80 });
+      await new Promise(res => setTimeout(res, 100));
+      
+      const updatedContacts = newContacts.map((c, idx) => ({ 
+        ...c, 
+        numeroLigne: idx + 1, 
+        id: c.id || uuidv4() 
+      }));
+      
+      setImportProgress({ message: `💾 Sauvegarde...`, percentage: 90 });
+      
+      // Sauvegarder la table importée pour persistance
+      const fileExtension = file.name.split('.').pop()?.toLowerCase();
+      const source = fileExtension === 'csv' ? 'csv' : 'xlsx';
+      saveImportedTable(updatedContacts, {
+        fileName: file.name,
+        source: source as 'csv' | 'xlsx',
+        totalRows: updatedContacts.length
       });
       
-      try {
-        // Analyse de la taille du fichier
-        if (fileSizeMB > 50) {
-          setImportProgress({ 
-            message: `⚠️ Fichier volumineux détecté (${fileSizeMB.toFixed(1)} MB). Traitement optimisé...`, 
-            percentage: 5 
-          });
-          await new Promise(res => setTimeout(res, 1000));
-        }
+      setContacts(updatedContacts);
+      setCallStates({});
+      setSelectedContact(null);
+      
+      setImportProgress({ message: `✅ Finalisation...`, percentage: 100 });
+      await new Promise(res => setTimeout(res, 500)); 
+      setImportProgress(null);
+      
+      const message = fileSizeMB > 10 
+        ? `🎉 ${updatedContacts.length} contacts importés avec succès depuis un fichier de ${fileSizeMB.toFixed(1)} MB !`
+        : `✅ ${updatedContacts.length} contacts importés avec succès !`;
         
-        setImportProgress({ message: `📖 Lecture du fichier...`, percentage: 10 });
-        await new Promise(res => setTimeout(res, 200));
-        
-        setImportProgress({ message: `⚙️ Traitement par chunks...`, percentage: 20 });
-        
-        // Import optimisé
-        const newContacts = await importContactsFromFile(file);
-        
-        setImportProgress({ message: `📝 Préparation des données...`, percentage: 80 });
-        await new Promise(res => setTimeout(res, 100));
-        
-        const updatedContacts = newContacts.map((c, idx) => ({ 
-          ...c, 
-          numeroLigne: idx + 1, 
-          id: c.id || uuidv4() 
-        }));
-        
-        setImportProgress({ message: `💾 Sauvegarde...`, percentage: 90 });
-        
-        // Sauvegarder la table importée pour persistance
-        const fileExtension = file.name.split('.').pop()?.toLowerCase();
-        const source = fileExtension === 'csv' ? 'csv' : 'xlsx';
-        saveImportedTable(updatedContacts, {
-          fileName: file.name,
-          source: source as 'csv' | 'xlsx',
-          totalRows: updatedContacts.length
-        });
-        
-        setContacts(updatedContacts);
-        setCallStates({});
-        setSelectedContact(null);
-        
-        setImportProgress({ message: `✅ Finalisation...`, percentage: 100 });
-        await new Promise(res => setTimeout(res, 500)); 
-        setImportProgress(null);
-        
-        const message = fileSizeMB > 10 
-          ? `🎉 ${updatedContacts.length} contacts importés avec succès depuis un fichier de ${fileSizeMB.toFixed(1)} MB !`
-          : `✅ ${updatedContacts.length} contacts importés avec succès !`;
-          
-        showNotification('success', message);
-        
-      } catch (error) {
-        console.error("Import error:", error);
-        setImportProgress(null);
-        showNotification('error', `❌ Erreur d'importation: ${error instanceof Error ? error.message : "Erreur inconnue"}. Vérifiez le format de votre fichier.`);
-      }
+      showNotification('success', message);
+      
+    } catch (error) {
+      console.error("Import error:", error);
+      setImportProgress(null);
+      showNotification('error', `❌ Erreur d'importation: ${error instanceof Error ? error.message : "Erreur inconnue"}. Vérifiez le format de votre fichier.`);
     }
   };
   
@@ -1400,6 +1412,12 @@ Dimitri MOREL - Arcanis Conseil`;
   // Debug log pour l'état du modal - Supabase supprimé
 
   // JSX Return
+  // Si l'authentification est en cours de chargement, ne rien afficher
+  // L'écran de chargement sera géré par main.tsx
+  if (auth.isLoading) {
+    return null;
+  }
+
   return (
     <div className={cn(
       "flex h-screen overflow-hidden bg-background", 
@@ -1411,8 +1429,12 @@ Dimitri MOREL - Arcanis Conseil`;
           <TitleBar 
             theme={theme} 
             activeTab={activeMenuTab}
-            onTabChange={setActiveMenuTab}
-            showDimiTable={hasSpecialAccess}
+            onTabChange={(tab) => {
+              if (tab === 'dimicall') {
+                setActiveMenuTab(tab);
+              }
+            }}
+            showDimiTable={false}
             onSettingsClick={() => setIsSettingsOpen(true)}
             adbConnectionState={adbConnectionState}
             adbConnecting={adbConnecting}
@@ -1436,27 +1458,7 @@ Dimitri MOREL - Arcanis Conseil`;
 
       
       {/* Notifications */}
-      <div className="fixed top-4 right-4 z-[9998] space-y-2">
-        {notifications.map(notif => (
-          <div
-            key={notif.id}
-            className={cn(
-              "p-3 rounded-lg shadow-lg border animate-slide-in flex items-center gap-2 text-white text-sm relative",
-              notif.type === 'success' && "bg-green-500",
-              notif.type === 'error' && "bg-red-500",
-              notif.type === 'info' && "bg-blue-500"
-            )}
-          >
-            {notif.message}
-            <button 
-              onClick={() => setNotifications(prev => prev.filter(n => n.id !== notif.id))} 
-              className="absolute top-1 right-1 text-lg font-bold opacity-70 hover:opacity-100 leading-none p-1"
-            >
-              &times;
-            </button>
-          </div>
-        ))}
-      </div>
+
 
       {/* Modal de progression */}
       {importProgress && (
@@ -1483,12 +1485,11 @@ Dimitri MOREL - Arcanis Conseil`;
 
       
       {/* Main content */}
-      {activeMenuTab === 'dimicall' ? (
-        <main className={cn(
-          "flex-1 flex flex-col p-3 space-y-3 overflow-hidden w-full min-h-0",
-          isAuthModalOpen && "pointer-events-none opacity-50"
-        )}>
-        {/* Ribbon */}
+      <main className={cn(
+        "flex-1 flex flex-col p-3 space-y-3 overflow-hidden w-full min-h-0",
+        isAuthModalOpen && "pointer-events-none opacity-50"
+      )}>
+      {/* Ribbon */}
         <Card className="p-3 ribbon-container w-fit mx-auto shadow-md">
           <div className="flex items-stretch justify-center gap-2 relative">
             
@@ -1858,6 +1859,7 @@ Dimitri MOREL - Arcanis Conseil`;
                         )}
                         checked={visibleColumns[header] || false}
                         onCheckedChange={() => toggleColumnVisibility(header)}
+                        onSelect={(e) => e.preventDefault()} // Empêche la fermeture du menu
                         disabled={isEssential}
                       >
                         <span className="flex-1">{header}</span>
@@ -1877,6 +1879,7 @@ Dimitri MOREL - Arcanis Conseil`;
                   className="flex items-center gap-2 text-primary"
                   checked={false}
                   onCheckedChange={showAllAvailableColumns}
+                  onSelect={(e) => e.preventDefault()} // Empêche la fermeture du menu
                 >
                   <Eye className="h-4 w-4" />
                   Afficher toutes les colonnes disponibles
@@ -1886,6 +1889,7 @@ Dimitri MOREL - Arcanis Conseil`;
                   className="flex items-center gap-2 text-orange-600 dark:text-orange-400"
                   checked={false}
                   onCheckedChange={hideOptionalColumns}
+                  onSelect={(e) => e.preventDefault()} // Empêche la fermeture du menu
                 >
                   <Eye className="h-4 w-4" />
                   Masquer les colonnes optionnelles
@@ -1950,46 +1954,15 @@ Dimitri MOREL - Arcanis Conseil`;
                 theme={theme}
                 visibleColumns={visibleColumns}
                 columnHeaders={availableColumns.length > 0 ? availableColumns : COLUMN_HEADERS}
-                contactDataKeys={CONTACT_DATA_KEYS as (keyof Contact | 'actions' | null)[]}
+                contactDataKeys={availableDataKeys.length > 0 ? availableDataKeys : CONTACT_DATA_KEYS as (keyof Contact | 'actions' | null)[]}
                 onToggleColumnVisibility={toggleColumnVisibility}
                 availableColumns={availableColumns}
+                onFileImport={handleSingleFileImport}
               />
             </div>
           </div>
         </div>
               </main>
-      ) : (
-        /* DimiTable Content - Nécessite accès privilégié */
-        <main className={cn(
-          "flex-1 flex flex-col p-2 space-y-2 overflow-auto",
-          isAuthModalOpen && "pointer-events-none opacity-50"
-        )}>
-          {hasSpecialAccess ? (
-            <DimiTable
-              theme={theme}
-              splitPanelOpen={splitPanelOpen}
-              setSplitPanelOpen={setSplitPanelOpen}
-            />
-          ) : (
-            <div className="flex-1 flex items-center justify-center">
-              <div className="text-center p-8 bg-gradient-to-br from-gray-50 to-blue-50 dark:from-gray-900/50 dark:to-blue-900/20 rounded-xl border border-gray-200 dark:border-gray-700">
-                <div className="w-16 h-16 bg-gradient-to-br from-gray-400 to-blue-500 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <span className="text-2xl">🔒</span>
-                </div>
-                <h2 className="text-xl font-bold text-gray-800 dark:text-gray-200 mb-2">
-                  Accès Restreint
-                </h2>
-                <p className="text-gray-600 dark:text-gray-400 mb-4">
-                  DimiTable nécessite un accès privilégié.
-                </p>
-                <p className="text-sm text-gray-500 dark:text-gray-500">
-                  Reconnectez-vous avec le mot de passe privilégié pour accéder à cette fonctionnalité.
-                </p>
-              </div>
-            </div>
-          )}
-        </main>
-      )}
 
 
 
@@ -2277,11 +2250,10 @@ Dimitri MOREL - Arcanis Conseil`;
       )}
 
       {/* Modal d'authentification */}
-      <AuthModal
-        isOpen={isAuthModalOpen}
-        onClose={() => setIsAuthModalOpen(false)}
-        onAuthenticated={handleAuthenticated}
-      />
+              <AuthModal
+          isOpen={isAuthModalOpen}
+          onClose={() => setIsAuthModalOpen(false)}
+        />
         </main>
       </div>
   );

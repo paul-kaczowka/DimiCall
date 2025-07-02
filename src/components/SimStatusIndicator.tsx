@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Badge } from './ui/badge';
-import { Switch } from './ui/switch';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Switch } from '@/components/ui/switch';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { CheckCircle, AlertCircle, Eye, EyeOff } from 'lucide-react';
 import { simSelectionService, SimSelectionResult } from '../../services/simSelectionService';
 

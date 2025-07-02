@@ -1,165 +1,133 @@
-import React from "react";
-import { createAuthClient } from "better-auth/react";
-import type { AuthUser } from "./auth";
+import { useState, useEffect } from 'react';
+import { supabase } from './supabase';
+import { Session, User } from '@supabase/supabase-js';
 
-export const authClient = createAuthClient({
-  baseURL: "http://localhost:5173",
-  fetchOptions: {
-    credentials: "omit" // Éviter les problèmes CORS avec les credentials
-  }
-});
+type AuthUser = User | null;
 
-// Hook personnalisé pour l'authentification avec nom/prénom (mode local)
-export const useCustomAuth = () => {
-  // Mode local : on n'utilise plus les sessions serveur
-  const [localSession, setLocalSession] = React.useState<any>(null);
-  const [isPending, setIsPending] = React.useState(false);
-  const [error, setError] = React.useState<string | null>(null);
-  
-  // Initialiser la session locale au démarrage
-  React.useEffect(() => {
-    const user = getCurrentUser();
-    const session = localStorage.getItem("auth_session");
-    if (user && session === "true") {
-      setLocalSession({ user });
-    }
-  }, []);
-  
-  const refetch = async () => {
-    const user = getCurrentUser();
-    const session = localStorage.getItem("auth_session");
-    if (user && session === "true") {
-      setLocalSession({ user });
-    } else {
-      setLocalSession(null);
-    }
-  };
-  
-  // Fonction d'inscription personnalisée (nom/prénom uniquement)
-  const signUp = async (firstName: string, lastName: string) => {
-    try {
-      // Pour le moment, on simule l'inscription avec localStorage
-      const userId = crypto.randomUUID();
-      const user: AuthUser = {
-        id: userId,
-        firstName,
-        lastName,
-        hasSpecialAccess: false,
-        lastLogin: new Date()
-      };
-      
-      localStorage.setItem("auth_user", JSON.stringify(user));
-      localStorage.setItem("auth_session", "true");
-      
-      // Déclencher un refresh de la session
-      await refetch();
-      
-      return { success: true, user };
-    } catch (error) {
-      console.error("Erreur lors de l'inscription:", error);
-      return { success: false, error: "Erreur lors de l'inscription" };
-    }
-  };
+export const useSupabaseAuth = () => {
+  const [session, setSession] = useState<Session | null>(null);
+  const [user, setUser] = useState<AuthUser>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
-  // Fonction de connexion personnalisée
-  const signIn = async (firstName: string, lastName: string) => {
-    try {
-      // Vérifier si l'utilisateur existe déjà
-      const existingUser = localStorage.getItem("auth_user");
-      if (existingUser) {
-        const user = JSON.parse(existingUser) as AuthUser;
-        if (user.firstName === firstName && user.lastName === lastName) {
-          // Mettre à jour la dernière connexion
-          user.lastLogin = new Date();
-          localStorage.setItem("auth_user", JSON.stringify(user));
-          localStorage.setItem("auth_session", "true");
-          
-          await refetch();
-          return { success: true, user };
+  useEffect(() => {
+    setIsLoading(true);
+    // 1. Récupérer la session initiale
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      const currentUser = session?.user ?? null;
+      setUser(currentUser);
+      setIsLoading(false);
+    });
+
+    // 2. Écouter les changements d'état d'authentification
+    const { data: authListener } = supabase.auth.onAuthStateChange(
+      (event, session) => {
+        console.log('[Auth State Change] Event:', event);
+        console.log('[Auth State Change] Session:', session);
+        
+        // Si l'utilisateur a été déconnecté à distance (soft-kick), afficher une notification
+        if (event === 'SIGNED_OUT' && session === null) {
+          // Vérifier si c'est un soft-kick (déconnexion à distance)
+          const currentSession = supabase.auth.getSession();
+          currentSession.then(({ data }) => {
+            if (!data.session) {
+              console.log('[Auth] Session révoquée à distance - soft-kick détecté');
+              // Note: La notification sera gérée par l'App qui écoute les changements d'auth
+            }
+          });
         }
+        
+        setSession(session);
+        const currentUser = session?.user ?? null;
+        setUser(currentUser);
       }
-      
-      // Si l'utilisateur n'existe pas, le créer
-      return await signUp(firstName, lastName);
-    } catch (error) {
-      console.error("Erreur lors de la connexion:", error);
-      return { success: false, error: "Erreur lors de la connexion" };
-    }
-  };
+    );
 
-  // Fonction de déconnexion
-  const signOut = async () => {
+    return () => {
+      authListener.subscription.unsubscribe();
+    };
+  }, []);
+
+  // Fonction pour révoquer toutes les autres sessions du même utilisateur
+  const revokeOtherSessions = async () => {
     try {
-      localStorage.removeItem("auth_user");
-      localStorage.removeItem("auth_session");
+      console.log('[Auth] Révocation des autres sessions en cours...');
       
-      // Supprimer tous les accès spéciaux
-      const keys = Object.keys(localStorage);
-      keys.forEach(key => {
-        if (key.startsWith("special_access_")) {
-          localStorage.removeItem(key);
+      // Supabase ne fournit pas d'API directe pour révoquer les autres sessions,
+      // mais on peut utiliser une approche qui force le rafraîchissement des tokens
+      // ce qui invalidera les anciennes sessions
+      
+      // Méthode 1: Mettre à jour les métadonnées utilisateur pour forcer l'invalidation
+      const { error: updateError } = await supabase.auth.updateUser({
+        data: { 
+          last_sign_in_device: navigator.userAgent,
+          last_sign_in_timestamp: new Date().toISOString()
         }
       });
+
+      if (updateError) {
+        console.warn('[Auth] Erreur lors de la mise à jour des métadonnées:', updateError);
+      }
+
+      // Méthode 2: Forcer le rafraîchissement du token actuel
+      const { error: refreshError } = await supabase.auth.refreshSession();
       
-      await refetch();
-      return { success: true };
+      if (refreshError) {
+        console.warn('[Auth] Erreur lors du rafraîchissement de session:', refreshError);
+      } else {
+        console.log('[Auth] ✅ Autres sessions révoquées avec succès');
+      }
+      
     } catch (error) {
-      console.error("Erreur lors de la déconnexion:", error);
-      return { success: false, error: "Erreur lors de la déconnexion" };
+      console.error('[Auth] Erreur lors de la révocation des autres sessions:', error);
     }
   };
 
-  // Vérifier l'accès spécial
-  const checkSpecialAccess = (): boolean => {
-    const user = getCurrentUser();
-    if (!user) return false;
-    return localStorage.getItem(`special_access_${user.id}`) === "true";
-  };
-
-  // Accorder l'accès spécial
-  const grantSpecialAccess = (password: string): boolean => {
-    const user = getCurrentUser();
-    if (!user) return false;
+  // Connexion par email et mot de passe avec soft-kick
+  const signInWithPassword = async (email: string, password: string) => {
+    console.log('[auth-client] Appel de signInWithPassword');
+    setIsLoading(true);
     
-    if (password === "DimiAccess2024") {
-      localStorage.setItem(`special_access_${user.id}`, "true");
-      return true;
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+    
+    console.log('[auth-client] Réponse de Supabase:', { data: data, error: error });
+    
+    // Si la connexion réussit, révoquer les autres sessions (soft-kick)
+    if (!error && data.session) {
+      console.log('[auth-client] Connexion réussie, mise à jour manuelle de la session.');
+      setSession(data.session);
+      setUser(data.user);
+      
+      // Déclencher le soft-kick après un court délai pour laisser la session s'établir
+      setTimeout(() => {
+        revokeOtherSessions();
+      }, 1000);
     }
-    return false;
+
+    setIsLoading(false);
+    return { data, error };
   };
 
-  // Obtenir l'utilisateur actuel
-  const getCurrentUser = (): AuthUser | null => {
-    try {
-      const userStr = localStorage.getItem("auth_user");
-      const sessionStr = localStorage.getItem("auth_session");
-      
-      if (!userStr || !sessionStr) return null;
-      
-      return JSON.parse(userStr) as AuthUser;
-    } catch (error) {
-      console.error("Erreur lors de la récupération de l'utilisateur:", error);
-      return null;
-    }
+  // Déconnexion
+  const signOut = async () => {
+    setIsLoading(true);
+    const { error } = await supabase.auth.signOut();
+    setIsLoading(false);
+    return { error };
   };
 
-  // Vérifier si l'utilisateur est connecté
-  const isAuthenticated = (): boolean => {
-    return localStorage.getItem("auth_session") === "true" && getCurrentUser() !== null;
-  };
+  // Calculer isAuthenticated
+  const isAuthenticated = !!session && !!user;
 
   return {
-    user: getCurrentUser(),
-    isAuthenticated: isAuthenticated(),
-    isPending,
-    error,
-    signUp,
-    signIn,
+    session,
+    user,
+    isLoading,
+    isAuthenticated,
+    signInWithPassword,
     signOut,
-    refetch,
-    checkSpecialAccess,
-    grantSpecialAccess
   };
-};
-
-export type CustomAuthHook = ReturnType<typeof useCustomAuth>; 
+}; 

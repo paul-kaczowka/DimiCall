@@ -1,15 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { Settings, Mail, X, Save, Undo, ChevronDown, Palette, Bell, Calendar, MessageSquare, Sun, Moon, Monitor, Keyboard, RotateCcw } from 'lucide-react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog';
-import { Button } from './ui/button';
-import { Input } from './ui/input';
-import { Label } from './ui/label';
-import { Textarea } from './ui/textarea';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
-import { Separator } from './ui/separator';
-import { Badge } from './ui/badge';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
-import { Switch } from './ui/switch';
+import { Settings, Mail, X, Save, Undo, ChevronDown, Palette, Bell, Calendar, MessageSquare, Sun, Moon, Monitor, Keyboard, RotateCcw, DownloadCloud } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Separator } from '@/components/ui/separator';
+import { Badge } from '@/components/ui/badge';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
 import { EmailType, Civility, Theme, ContactStatus } from '../types';
 import { shortcutService, ShortcutConfig } from '../services/shortcutService';
 import { cn } from '../lib/utils';
@@ -59,7 +59,7 @@ const defaultTemplates: EmailTemplates = {
 
 const STORAGE_KEY = 'dimicall_email_templates';
 
-type SettingsCategory = 'email' | 'sms' | 'calcom' | 'appearance' | 'shortcuts' | 'notifications';
+type SettingsCategory = 'email' | 'sms' | 'calcom' | 'appearance' | 'shortcuts' | 'notifications' | 'update';
 
 const categories = [
   { 
@@ -97,6 +97,12 @@ const categories = [
     label: 'Notifications', 
     icon: Bell, 
     description: 'Alertes et rappels'
+  },
+  {
+    id: 'update' as SettingsCategory,
+    label: 'Mises à jour',
+    icon: DownloadCloud,
+    description: 'Gérer les versions de l\'application'
   }
 ] as const;
 
@@ -142,6 +148,45 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
   const [localSmsTemplate, setLocalSmsTemplate] = useState<string>(smsTemplate || DEFAULT_SMS_TEMPLATE);
   const [shortcuts, setShortcuts] = useState<ShortcutConfig[]>([]);
   const [shortcutsChanged, setShortcutsChanged] = useState(false);
+  const [updateStatus, setUpdateStatus] = useState<string>('Prêt à vérifier.');
+  const [updateDownloaded, setUpdateDownloaded] = useState(false);
+  const [isChecking, setIsChecking] = useState(false);
+
+  useEffect(() => {
+    const removeListener = window.electronAPI.onUpdateStatus((status, details) => {
+      switch (status) {
+        case 'checking-for-update':
+          setUpdateStatus('Recherche en cours...')
+          setIsChecking(true)
+          setUpdateDownloaded(false)
+          break
+        case 'update-available':
+          setUpdateStatus(`Mise à jour ${details.version} disponible. Téléchargement en cours...`)
+          break
+        case 'update-not-available':
+          setUpdateStatus('Vous avez déjà la dernière version.')
+          setIsChecking(false)
+          break
+        case 'update-downloaded':
+          setUpdateStatus(`Mise à jour ${details.version} téléchargée. Prête à être installée.`)
+          setIsChecking(false)
+          setUpdateDownloaded(true)
+          break
+        case 'error':
+          setUpdateStatus(`Erreur de mise à jour: ${details.message}`)
+          setIsChecking(false)
+          break
+        default:
+          setUpdateStatus(`Statut inconnu: ${status}`)
+          setIsChecking(false)
+          break
+      }
+    })
+
+    return () => {
+      removeListener()
+    }
+  }, [])
 
   // Charger les templates sauvegardés
   useEffect(() => {
@@ -248,10 +293,10 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
       [ContactStatus.Repondeur]: 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20',
       [ContactStatus.ARappeler]: 'bg-blue-500/10 text-blue-500 border-blue-500/20',
       [ContactStatus.PasInteresse]: 'bg-red-500/10 text-red-500 border-red-500/20',
-      [ContactStatus.Argumente]: 'bg-green-500/10 text-green-500 border-green-500/20',
+      [ContactStatus.Argumente]: 'bg-purple-500/10 text-purple-500 border-purple-500/20',
       [ContactStatus.DO]: 'bg-green-500/10 text-green-500 border-green-500/20',
-      [ContactStatus.RO]: 'bg-purple-500/10 text-purple-500 border-purple-500/20',
-      [ContactStatus.ListeNoire]: 'bg-foreground text-background border-foreground/20'
+      [ContactStatus.RO]: 'bg-teal-500/10 text-teal-500 border-teal-500/20',
+      [ContactStatus.ListeNoire]: 'bg-zinc-500/10 text-zinc-500 border-zinc-500/20'
     };
     return colors[status] || 'bg-muted text-muted-foreground border-transparent';
   };
@@ -282,6 +327,7 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
     
     setHasChanges(false);
     onSave();
+    onClose();
   };
 
   const handleReset = () => {
@@ -291,6 +337,14 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
     setLocalSmsTemplate(DEFAULT_SMS_TEMPLATE);
     handleShortcutsReset();
     setHasChanges(true);
+  };
+
+  const handleCheckForUpdates = () => {
+    window.electronAPI.checkForUpdates()
+  };
+
+  const handleRestart = () => {
+    window.electronAPI.restartAndInstall()
   };
 
   const renderEmailSettings = () => {
@@ -682,6 +736,38 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
     </Card>
   );
 
+  const renderUpdateSettings = () => (
+    <Card>
+      <CardHeader>
+        <CardTitle>Mises à jour de l'application</CardTitle>
+        <CardDescription>
+          Vérifiez si une nouvelle version de DimiCall est disponible.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex items-center justify-between p-4 border rounded-lg">
+          <p className="text-sm font-medium">
+            Statut: <span className="font-normal text-muted-foreground">{updateStatus}</span>
+          </p>
+          {updateDownloaded ? (
+            <Button onClick={handleRestart}>
+              <DownloadCloud className="w-4 h-4 mr-2" />
+              Redémarrer & Installer
+            </Button>
+          ) : (
+            <Button onClick={handleCheckForUpdates} disabled={isChecking}>
+              <DownloadCloud className="w-4 h-4 mr-2" />
+              Vérifier maintenant
+            </Button>
+          )}
+        </div>
+        <CardDescription>
+          L'application recherche automatiquement les mises à jour au démarrage. Si une mise à jour est trouvée, elle sera téléchargée en arrière-plan et vous serez notifié lorsqu'elle sera prête à être installée.
+        </CardDescription>
+      </CardContent>
+    </Card>
+  );
+
   const renderCategory = () => {
     switch (activeCategory) {
       case 'email':
@@ -696,25 +782,28 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
         return renderShortcutSettings();
       case 'notifications':
         return renderNotificationSettings();
+      case 'update':
+        return renderUpdateSettings();
       default:
-        return null;
+        return renderEmailSettings();
     }
   };
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent 
-        className="max-w-6xl h-[85vh] p-0 gap-0 overflow-hidden flex flex-col"
-        showCloseButton={false}
-        onInteractOutside={(e) => {
-          const target = e.target as HTMLElement;
-          if (target.closest('[data-radix-popper-content-wrapper]')) {
-            e.preventDefault();
-          }
-        }}
-      >
-        <div className="flex h-full min-h-0">
-          {/* Sidebar */}
+      <DialogContent showCloseButton={false} className="max-w-7xl h-[90vh] flex flex-col p-0 gap-0">
+        <DialogHeader className="p-4 border-b flex-row items-center justify-between">
+          <DialogTitle className="flex items-center gap-2">
+            <Settings className="w-5 h-5" />
+            Réglages de l'application
+          </DialogTitle>
+          <button onClick={onClose} className="p-1 rounded-full hover:bg-muted">
+            <X className="w-5 h-5" />
+          </button>
+        </DialogHeader>
+
+        <div className="flex flex-1 overflow-hidden">
+          {/* Sidebar de navigation */}
           <div className="w-64 border-r bg-muted/30 p-4 flex-shrink-0">
             <div className="pb-4">
               <div className="flex items-center gap-2">
@@ -724,23 +813,25 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
                 <span className="font-semibold">Réglages</span>
               </div>
             </div>
-
             <nav className="space-y-1">
               {categories.map((category) => (
                 <button
                   key={category.id}
                   onClick={() => setActiveCategory(category.id)}
-                  className={`w-full text-left rounded-md transition-colors ${
+                  className={cn(
+                    "w-full text-left rounded-md transition-colors",
                     activeCategory === category.id
-                      ? 'bg-primary text-primary-foreground shadow-sm'
-                      : 'hover:bg-accent hover:text-accent-foreground'
-                  }`}
+                      ? "bg-primary text-primary-foreground shadow-sm"
+                      : "hover:bg-accent hover:text-accent-foreground"
+                  )}
                 >
                   <div className="flex items-center gap-3 p-3">
-                    <category.icon className={`w-4 h-4 ${activeCategory !== category.id ? 'text-muted-foreground' : ''}`} />
+                    <category.icon className={cn("w-4 h-4", activeCategory !== category.id && "text-muted-foreground")} aria-hidden="true" />
                     <div>
-                      <div className={`text-sm font-medium ${activeCategory !== category.id ? 'text-muted-foreground' : ''}`}>{category.label}</div>
-                      <div className={`text-xs ${activeCategory !== category.id ? 'text-muted-foreground' : 'text-primary-foreground/80'}`}>{category.description}</div>
+                      <div className="text-sm font-medium">{category.label}</div>
+                      <div className={cn("text-xs", activeCategory === category.id ? "text-primary-foreground/80" : "text-muted-foreground")}>
+                        {category.description}
+                      </div>
                     </div>
                   </div>
                 </button>
@@ -748,49 +839,19 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
             </nav>
           </div>
 
-          {/* Main Content */}
-          <div className="flex-1 flex flex-col min-h-0">
-            {/* Header */}
-            <div className="border-b p-4 flex-shrink-0">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h2 className="text-xl font-semibold tracking-tight">
-                    {categories.find(c => c.id === activeCategory)?.label}
-                  </h2>
-                  <p className="text-sm text-muted-foreground">
-                    {categories.find(c => c.id === activeCategory)?.description}
-                  </p>
-                </div>
-                <Button variant="ghost" size="icon" onClick={onClose} className="rounded-full">
-                  <X className="w-4 h-4" />
-                </Button>
-              </div>
-            </div>
-
-            {/* Content */}
-            <div className="flex-1 overflow-y-auto p-4 min-h-0">
-              {renderCategory()}
-            </div>
-
-            {/* Footer */}
-            <div className="border-t p-4 flex-shrink-0">
-              <div className="flex items-center justify-between">
-                <Button variant="outline" onClick={handleReset} disabled={!hasChanges}>
-                  <RotateCcw className="w-4 h-4 mr-2" />
-                  Réinitialiser
-                </Button>
-                <div className="flex items-center gap-2">
-                  <Button variant="outline" onClick={onClose}>
-                    Annuler
-                  </Button>
-                  <Button onClick={handleSave} disabled={!hasChanges}>
-                    <Save className="w-4 h-4 mr-2" />
-                    Sauvegarder
-                  </Button>
-                </div>
-              </div>
-            </div>
+          {/* Contenu principal */}
+          <div className="flex-1 p-6 overflow-y-auto">
+            {renderCategory()}
           </div>
+        </div>
+        
+        {/* Pied de page avec boutons */}
+        <div className="p-4 border-t flex justify-end gap-3 bg-muted/30">
+          <Button variant="ghost" onClick={handleReset}>Réinitialiser les changements</Button>
+          <Button onClick={handleSave} disabled={!hasChanges}>
+            <Save className="w-4 h-4 mr-2" />
+            Sauvegarder et Fermer
+          </Button>
         </div>
       </DialogContent>
     </Dialog>

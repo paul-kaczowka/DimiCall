@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { motion, AnimatePresence } from 'framer-motion';
 
 import { 
   DropdownMenu,
@@ -21,9 +22,9 @@ import {
 import { 
   Phone, User, Mail, MessageCircle, Clock, Calendar as CalendarIcon, FileText, ArrowUpDown, 
   ArrowUp, ArrowDown, Trash2, Zap, Timer, Eye, EyeOff, Settings2, GripVertical, Move, X,
-  Hash, FolderOpen
+  Hash, FolderOpen, Upload, FileSpreadsheet, Users, CloudUpload
 } from 'lucide-react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { formatPhoneNumber } from '../services/dataService';
 
 type SortDirection = 'asc' | 'desc' | null;
@@ -674,6 +675,7 @@ interface ContactTableProps {
   contactDataKeys: (keyof Contact | 'actions' | null)[];
   onToggleColumnVisibility: (header: string) => void;
   availableColumns?: string[];
+  onFileImport?: (file: File) => Promise<void>;
 }
 
 export const ContactTable = forwardRef<ContactTableRef, ContactTableProps>(({
@@ -690,6 +692,7 @@ export const ContactTable = forwardRef<ContactTableRef, ContactTableProps>(({
   contactDataKeys,
   onToggleColumnVisibility,
   availableColumns = [],
+  onFileImport,
 }, ref) => {
   const [editingCell, setEditingCell] = useState<{ contactId: string; field: keyof Contact } | null>(null);
   const [editValue, setEditValue] = useState('');
@@ -782,6 +785,12 @@ export const ContactTable = forwardRef<ContactTableRef, ContactTableProps>(({
 
   // Ref pour le conteneur de scroll
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+
+  // États pour le drag & drop
+  const [isDragOver, setIsDragOver] = useState(false);
+  const [isDragActive, setIsDragActive] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const dropzoneRef = useRef<HTMLDivElement>(null);
 
   // Gestion du tri
   const handleSort = useCallback((key: keyof Contact) => {
@@ -882,7 +891,12 @@ export const ContactTable = forwardRef<ContactTableRef, ContactTableProps>(({
 
   // Gestion de l'édition
   const handleCellDoubleClick = (contactId: string, columnKey: keyof Contact, currentValue: any) => {
-    if (columnKey === 'statut') return; // Géré par le select
+    // On ignore les colonnes qui ont déjà leur propre widget ou ne sont pas destinées à l'édition texte simple
+    const nonEditableFields: (keyof Contact)[] = [
+      'statut', 'commentaire', 'dateRappel', 'heureRappel', 'dateRDV', 'heureRDV', 'dateAppel', 'heureAppel', 'dureeAppel'
+    ];
+
+    if (nonEditableFields.includes(columnKey)) return;
     setEditingCell({ contactId, field: columnKey });
     setEditValue(currentValue || '');
   };
@@ -932,13 +946,28 @@ export const ContactTable = forwardRef<ContactTableRef, ContactTableProps>(({
     
     if (column.id === 'actions') {
       return (
-        <span className="cursor-pointer hover:text-primary transition-colors text-center block">
-          {contact.telephone ? formatPhoneNumber(contact.telephone) : 'N/A'}
-        </span>
+        <div className="flex items-center justify-center gap-1 text-muted-foreground">
+          <Phone className="w-4 h-4 hover:text-primary transition-colors cursor-pointer" />
+          {/* Placeholders pour d'éventuelles autres actions */}
+        </div>
       );
     }
 
     const value = contact[columnKey];
+
+    // Ajout : support de l'édition inline lorsqu'une cellule est en mode édition
+    if (editingCell && editingCell.contactId === contact.id && editingCell.field === columnKey) {
+      return (
+        <Input
+          className={INPUT_BASE_CLASS}
+          value={editValue}
+          autoFocus
+          onChange={(e) => setEditValue(e.target.value)}
+          onBlur={handleEditCommit}
+          onKeyDown={handleEditKeyDown}
+        />
+      );
+    }
 
     switch (columnKey) {
       case 'prenom':
@@ -1128,122 +1157,568 @@ export const ContactTable = forwardRef<ContactTableRef, ContactTableProps>(({
     setDragOverColumn(null);
   };
 
+  // Gestionnaires drag & drop pour les fichiers
+  const handleFileDragEnter = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    if (e.dataTransfer.types.includes('Files')) {
+      setIsDragActive(true);
+      setIsDragOver(true);
+    }
+  }, []);
+
+  const handleFileDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    // Ne réinitialiser que si on quitte vraiment la zone de drop
+    if (!dropzoneRef.current?.contains(e.relatedTarget as Node)) {
+      setIsDragOver(false);
+      if (!isProcessing) {
+        setIsDragActive(false);
+      }
+    }
+  }, [isProcessing]);
+
+  const handleFileDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    if (e.dataTransfer.types.includes('Files')) {
+      e.dataTransfer.dropEffect = 'copy';
+      setIsDragOver(true);
+    }
+  }, []);
+
+  const handleFileDrop = useCallback(async (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    setIsDragOver(false);
+    setIsDragActive(false);
+    
+    if (!onFileImport) return;
+    
+    const files = Array.from(e.dataTransfer.files);
+    const validFiles = files.filter(file => {
+      const extension = file.name.split('.').pop()?.toLowerCase();
+      return ['csv', 'xlsx', 'xls', 'tsv'].includes(extension || '');
+    });
+    
+    if (validFiles.length === 0) {
+      // Notification d'erreur pour format invalide
+      return;
+    }
+    
+    const file = validFiles[0]; // Prendre le premier fichier valide
+    
+    try {
+      setIsProcessing(true);
+      await onFileImport(file);
+    } catch (error) {
+      console.error('Erreur lors de l\'import:', error);
+    } finally {
+      setIsProcessing(false);
+      setIsDragActive(false);
+    }
+  }, [onFileImport]);
+
+  // Composant d'état vide moderne avec Framer Motion
+  const EmptyState = () => (
+    <div className="absolute inset-0 flex items-center justify-center">
+      <motion.div 
+        className="text-center space-y-6 p-8 max-w-md mx-auto"
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.6, ease: "easeOut" }}
+      >
+        {/* Animation de l'icône principale avec glow effect */}
+        <div className="relative">
+          <motion.div 
+            className="absolute inset-0 w-24 h-24 mx-auto rounded-full bg-gradient-to-r from-blue-500/20 to-purple-600/20"
+            animate={{ 
+              scale: [1, 1.2, 1],
+              opacity: [0.3, 0.6, 0.3] 
+            }}
+            transition={{ 
+              duration: 3,
+              repeat: Infinity,
+              ease: "easeInOut" 
+            }}
+          />
+          <motion.div 
+            className="relative w-24 h-24 mx-auto rounded-full bg-gradient-to-r from-blue-500 to-purple-600 flex items-center justify-center shadow-lg"
+            whileHover={{ scale: 1.05 }}
+            transition={{ type: "spring", stiffness: 400, damping: 17 }}
+          >
+            <motion.div
+              animate={{ rotate: [0, 5, 0, -5, 0] }}
+              transition={{ 
+                duration: 4,
+                repeat: Infinity,
+                ease: "easeInOut" 
+              }}
+            >
+              <Users className="w-12 h-12 text-white" />
+            </motion.div>
+          </motion.div>
+        </div>
+        
+        {/* Titre avec gradient et animation */}
+        <motion.div 
+          className="space-y-2"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.2, duration: 0.5 }}
+        >
+          <motion.h3 
+            className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent"
+            initial={{ y: 10 }}
+            animate={{ y: 0 }}
+            transition={{ delay: 0.3, duration: 0.4 }}
+          >
+            Aucun contact pour le moment
+          </motion.h3>
+          <motion.p 
+            className="text-muted-foreground text-lg"
+            initial={{ y: 10 }}
+            animate={{ y: 0 }}
+            transition={{ delay: 0.4, duration: 0.4 }}
+          >
+            Commencez par importer vos contacts
+          </motion.p>
+        </motion.div>
+        
+        {/* Instructions avec icônes animées */}
+        <motion.div 
+          className="space-y-4 text-sm text-muted-foreground"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.5, duration: 0.5 }}
+        >
+          <motion.div 
+            className="flex items-center justify-center gap-3 p-3 rounded-lg bg-muted/30 hover:bg-muted/50 transition-colors"
+            whileHover={{ scale: 1.02 }}
+            transition={{ type: "spring", stiffness: 400, damping: 17 }}
+          >
+            <motion.div
+              animate={{ y: [0, -3, 0] }}
+              transition={{ 
+                duration: 2,
+                repeat: Infinity,
+                ease: "easeInOut" 
+              }}
+            >
+              <CloudUpload className="w-5 h-5 text-blue-500" />
+            </motion.div>
+            <span>Glissez-déposez vos fichiers ici</span>
+          </motion.div>
+          
+          <div className="grid grid-cols-2 gap-3">
+            <motion.div 
+              className="flex items-center gap-2 p-2 rounded bg-green-500/10 text-green-700 dark:text-green-400"
+              whileHover={{ scale: 1.02 }}
+              initial={{ x: -10, opacity: 0 }}
+              animate={{ x: 0, opacity: 1 }}
+              transition={{ delay: 0.6, duration: 0.3 }}
+            >
+              <FileSpreadsheet className="w-4 h-4" />
+              <span className="text-xs">Excel (.xlsx)</span>
+            </motion.div>
+            <motion.div 
+              className="flex items-center gap-2 p-2 rounded bg-blue-500/10 text-blue-700 dark:text-blue-400"
+              whileHover={{ scale: 1.02 }}
+              initial={{ x: 10, opacity: 0 }}
+              animate={{ x: 0, opacity: 1 }}
+              transition={{ delay: 0.7, duration: 0.3 }}
+            >
+              <FileText className="w-4 h-4" />
+              <span className="text-xs">CSV / TSV</span>
+            </motion.div>
+          </div>
+        </motion.div>
+        
+        {/* Éléments décoratifs modernes et sobres */}
+        <div className="absolute top-0 left-0 w-full h-full pointer-events-none overflow-hidden">
+          {/* Cercles flottants sobres */}
+          <motion.div 
+            className="absolute top-10 left-10 w-2 h-2 bg-blue-400/40 rounded-full"
+            animate={{ 
+              scale: [1, 1.2, 1],
+              opacity: [0.4, 0.8, 0.4] 
+            }}
+            transition={{ 
+              duration: 3,
+              repeat: Infinity,
+              ease: "easeInOut",
+              delay: 0 
+            }}
+          />
+          <motion.div 
+            className="absolute top-20 right-20 w-1 h-1 bg-purple-400/50 rounded-full"
+            animate={{ 
+              scale: [1, 1.5, 1],
+              opacity: [0.3, 0.7, 0.3] 
+            }}
+            transition={{ 
+              duration: 2.5,
+              repeat: Infinity,
+              ease: "easeInOut",
+              delay: 0.5 
+            }}
+          />
+          <motion.div 
+            className="absolute bottom-20 left-16 w-1.5 h-1.5 bg-indigo-400/40 rounded-full"
+            animate={{ 
+              scale: [1, 1.3, 1],
+              opacity: [0.5, 0.9, 0.5] 
+            }}
+            transition={{ 
+              duration: 3.5,
+              repeat: Infinity,
+              ease: "easeInOut",
+              delay: 1 
+            }}
+          />
+          
+          {/* Lignes subtiles animées */}
+          <motion.div 
+            className="absolute bottom-32 right-12 w-8 h-0.5 bg-gradient-to-r from-transparent via-cyan-400/30 to-transparent"
+            animate={{ 
+              scaleX: [0, 1, 0],
+              opacity: [0, 0.6, 0] 
+            }}
+            transition={{ 
+              duration: 4,
+              repeat: Infinity,
+              ease: "easeInOut",
+              delay: 1.5 
+            }}
+          />
+          
+          <motion.div 
+            className="absolute top-32 right-32 w-0.5 h-6 bg-gradient-to-b from-transparent via-violet-400/30 to-transparent"
+            animate={{ 
+              scaleY: [0, 1, 0],
+              opacity: [0, 0.5, 0] 
+            }}
+            transition={{ 
+              duration: 3.8,
+              repeat: Infinity,
+              ease: "easeInOut",
+              delay: 2 
+            }}
+          />
+        </div>
+      </motion.div>
+    </div>
+  );
+
+  // Overlay de drag & drop amélioré avec Framer Motion
+  const DragOverlay = ({ isDragOver }: { isDragOver: boolean }) => (
+    <AnimatePresence>
+      {isDragOver && (
+        <motion.div 
+          className="absolute inset-0 z-50 flex items-center justify-center"
+          style={{
+            background: "rgba(59, 130, 246, 0.05)",
+            backdropFilter: "blur(8px)",
+          }}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.2 }}
+        >
+          <motion.div 
+            className="text-center space-y-6 p-8"
+            initial={{ scale: 0.8, y: 20 }}
+            animate={{ scale: 1, y: 0 }}
+            exit={{ scale: 0.8, y: -20 }}
+            transition={{ type: "spring", stiffness: 300, damping: 25 }}
+          >
+            {/* Animation de drop zone fluide */}
+            <div className="relative">
+              <motion.div 
+                className="absolute inset-0 w-32 h-32 mx-auto rounded-full border-4 border-blue-500/30"
+                animate={{ 
+                  scale: [1, 1.2, 1],
+                  rotate: [0, 180, 360] 
+                }}
+                transition={{ 
+                  duration: 2,
+                  repeat: Infinity,
+                  ease: "linear" 
+                }}
+              />
+              <motion.div 
+                className="relative w-32 h-32 mx-auto rounded-full border-4 border-dashed border-blue-500 bg-blue-500/10 flex items-center justify-center"
+                animate={{ scale: [0.9, 1.1, 0.9] }}
+                transition={{ 
+                  duration: 1.5,
+                  repeat: Infinity,
+                  ease: "easeInOut" 
+                }}
+              >
+                <motion.div
+                  animate={{ y: [0, -8, 0] }}
+                  transition={{ 
+                    duration: 1.2,
+                    repeat: Infinity,
+                    ease: "easeInOut" 
+                  }}
+                >
+                  <Upload className="w-16 h-16 text-blue-500" />
+                </motion.div>
+              </motion.div>
+            </div>
+            
+            <motion.div 
+              className="space-y-2"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.1 }}
+            >
+              <motion.h3 
+                className="text-3xl font-bold text-blue-600"
+                animate={{ scale: [1, 1.02, 1] }}
+                transition={{ 
+                  duration: 2,
+                  repeat: Infinity,
+                  ease: "easeInOut" 
+                }}
+              >
+                Relâchez pour importer
+              </motion.h3>
+              <motion.p 
+                className="text-xl text-blue-500/80"
+                initial={{ y: 5 }}
+                animate={{ y: 0 }}
+                transition={{ delay: 0.2 }}
+              >
+                Vos contacts seront ajoutés automatiquement
+              </motion.p>
+            </motion.div>
+            
+            {/* Particules modernes et sobres */}
+            <div className="absolute inset-0 pointer-events-none">
+              {[...Array(6)].map((_, i) => (
+                <motion.div
+                  key={i}
+                  className="absolute w-1 h-1 bg-blue-400/60 rounded-full"
+                  style={{
+                    left: `${20 + (i * 12)}%`,
+                    top: `${15 + (i % 3) * 25}%`,
+                  }}
+                  animate={{
+                    scale: [0, 1, 0],
+                    opacity: [0, 0.8, 0],
+                    y: [0, -20, 0]
+                  }}
+                  transition={{
+                    duration: 2,
+                    repeat: Infinity,
+                    delay: i * 0.3,
+                    ease: "easeInOut"
+                  }}
+                />
+              ))}
+              
+              {/* Lignes géométriques animées */}
+              {[...Array(3)].map((_, i) => (
+                <motion.div
+                  key={`line-${i}`}
+                  className="absolute w-6 h-0.5 bg-blue-400/40"
+                  style={{
+                    left: `${15 + (i * 25)}%`,
+                    top: `${20 + (i * 20)}%`,
+                    transformOrigin: 'center'
+                  }}
+                  animate={{
+                    scaleX: [0, 1, 0],
+                    opacity: [0, 0.6, 0],
+                    rotate: [0, 90, 0]
+                  }}
+                  transition={{
+                    duration: 3,
+                    repeat: Infinity,
+                    delay: i * 0.5,
+                    ease: "easeInOut"
+                  }}
+                />
+              ))}
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+
   return (
     <div className="contact-table-container space-y-4">
-
       {/* Table unique avec en-tête sticky pour alignement correct */}
-      <div className="border rounded-lg overflow-hidden">
-        <div
-          ref={scrollContainerRef}
-          className="h-[800px] overflow-auto scrollbar-hidden relative bg-background"
+      <div className="border rounded-lg overflow-hidden relative">
+        <motion.div
+          ref={(node) => {
+            dropzoneRef.current = node;
+            scrollContainerRef.current = node;
+          }}
+          className={cn(
+            "h-[800px] overflow-auto scrollbar-hidden relative bg-background transition-all duration-300",
+            isDragActive && "ring-2 ring-blue-500 ring-offset-2"
+          )}
+          onDragEnter={handleFileDragEnter}
+          onDragLeave={handleFileDragLeave}
+          onDragOver={handleFileDragOver}
+          onDrop={handleFileDrop}
+          animate={{
+            scale: isDragActive ? 1.02 : 1
+          }}
+          transition={{ 
+            type: "spring", 
+            stiffness: 300, 
+            damping: 30 
+          }}
         >
-          <Table className="relative w-full table-auto" style={{ borderCollapse: 'separate', borderSpacing: 0 }}>
-            {/* En-tête sticky */}
-            <TableHeader className="sticky top-0 z-[101] bg-background">
-              <TableRow className="hover:bg-transparent border-b">
-                 {visibleOrderedColumns.map(column => (
-                    <TableHead
-                      key={column.id}
-                      draggable
-                      onDragStart={(e) => handleDragStart(e, column.id)}
-                      onDragOver={handleDragOver}
-                      onDragEnter={(e) => handleDragEnter(e, column.id)}
-                      onDragLeave={handleDragLeave}
-                      onDrop={(e) => handleDrop(e, column.id)}
-                      onDragEnd={handleDragEnd}
-                      className={cn(
-                        "text-foreground h-10 align-middle whitespace-nowrap px-2 py-1.5 text-center font-medium text-xs select-none transition-all duration-200",
-                        column.canSort ? "cursor-pointer hover:bg-muted" : "",
-                        draggedColumn === column.id && "opacity-50 scale-95",
-                        dragOverColumn === column.id && "border-l-4 border-l-primary bg-primary/10",
-                        "cursor-grab active:cursor-grabbing"
-                      )}
-                      style={{ 
-                        width: column.width,
-                        minWidth: column.minWidth,
-                        background: 'hsl(var(--background))',
-                        backdropFilter: 'blur(8px)',
-                        boxShadow: 'rgba(0, 0, 0, 0.1) 0px 2px 8px 0px, rgba(0, 0, 0, 0.1) 0px 1px 4px -1px',
-                        borderBottom: '1px solid hsl(var(--border))'
-                      }}
-                      onClick={(e) => {
-                        // Empêcher le tri si on est en train de drag
-                        if (!draggedColumn && column.canSort) {
-                          handleSort(column.key as keyof Contact);
-                        }
-                      }}
-                    >
-                      <div className="flex items-center justify-center gap-1">
-                        <GripVertical className="w-3 h-3 text-muted-foreground/50 hover:text-muted-foreground transition-colors" />
-                        <span className="truncate flex-1 text-center">{column.label}</span>
-                        {column.canSort && sortConfig.key === column.key && (
-                          <>
-                            {sortConfig.direction === 'asc' && <ArrowUp className="w-3 h-3 text-muted-foreground/50" />}
-                            {sortConfig.direction === 'desc' && <ArrowDown className="w-3 h-3 text-muted-foreground/50" />}
-                            {!sortConfig.direction && <ArrowUpDown className="w-3 h-3 text-muted-foreground/50" />}
-                          </>
-                        )}
-                        {column.canSort && sortConfig.key !== column.key && (
-                          <ArrowUpDown className="w-3 h-3 text-muted-foreground/50" />
-                        )}
-                      </div>
-                    </TableHead>
-                 ))}
-                </TableRow>
-            </TableHeader>
-            
-            {/* Corps du tableau */}
-            <TableBody>
-              {sortedContacts.map((contact, contactIndex) => {
-                const isSelected = selectedContactId === contact.id;
-                const callState = callStates[contact.id];
-                const isActiveCall = activeCallContactId === contact.id;
+          {/* État vide ou table */}
+          <AnimatePresence mode="wait">
+            {contacts.length === 0 ? (
+              <EmptyState key="empty" />
+            ) : (
+              <motion.div
+                key="table"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.3 }}
+              >
+                <Table className="relative w-full table-auto" style={{ borderCollapse: 'separate', borderSpacing: 0 }}>
+                  {/* En-tête sticky */}
+                  <TableHeader className="sticky top-0 z-[101] bg-background">
+                    <TableRow className="hover:bg-transparent border-b">
+                       {visibleOrderedColumns.map((column, index) => (
+                          <TableHead
+                            key={column.id}
+                            draggable
+                            onDragStart={(e) => handleDragStart(e, column.id)}
+                            onDragOver={handleDragOver}
+                            onDragEnter={(e) => handleDragEnter(e, column.id)}
+                            onDragLeave={handleDragLeave}
+                            onDrop={(e) => handleDrop(e, column.id)}
+                            onDragEnd={handleDragEnd}
+                            className={cn(
+                              "text-foreground h-10 align-middle whitespace-nowrap px-2 py-1.5 text-center font-medium text-xs select-none transition-all duration-200",
+                              column.canSort ? "cursor-pointer hover:bg-muted" : "",
+                              draggedColumn === column.id && "opacity-50 scale-95",
+                              dragOverColumn === column.id && "border-l-4 border-l-primary bg-primary/10",
+                              "cursor-grab active:cursor-grabbing"
+                            )}
+                            style={{ 
+                              width: column.width,
+                              minWidth: column.minWidth,
+                              background: 'hsl(var(--background))',
+                              backdropFilter: 'blur(8px)',
+                              boxShadow: 'rgba(0, 0, 0, 0.1) 0px 2px 8px 0px, rgba(0, 0, 0, 0.1) 0px 1px 4px -1px',
+                              borderBottom: '1px solid hsl(var(--border))'
+                            }}
+                            onClick={(e) => {
+                              // Empêcher le tri si on est en train de drag
+                              if (!draggedColumn && column.canSort) {
+                                handleSort(column.key as keyof Contact);
+                              }
+                            }}
+                          >
+                            <div className="flex items-center justify-center gap-1">
+                              <GripVertical className="w-3 h-3 text-muted-foreground/50 hover:text-muted-foreground transition-colors" />
+                              <span className="truncate flex-1 text-center">{column.label}</span>
+                              {column.canSort && sortConfig.key === column.key && (
+                                <>
+                                  {sortConfig.direction === 'asc' && <ArrowUp className="w-3 h-3 text-muted-foreground/50" />}
+                                  {sortConfig.direction === 'desc' && <ArrowDown className="w-3 h-3 text-muted-foreground/50" />}
+                                  {!sortConfig.direction && <ArrowUpDown className="w-3 h-3 text-muted-foreground/50" />}
+                                </>
+                              )}
+                              {column.canSort && sortConfig.key !== column.key && (
+                                <ArrowUpDown className="w-3 h-3 text-muted-foreground/50" />
+                              )}
+                            </div>
+                          </TableHead>
+                       ))}
+                      </TableRow>
+                  </TableHeader>
+                  
+                  {/* Corps du tableau */}
+                  <TableBody>
+                    {sortedContacts.map((contact, contactIndex) => {
+                      const isSelected = selectedContactId === contact.id;
+                      const callState = callStates[contact.id];
+                      const isActiveCall = activeCallContactId === contact.id;
 
-                return (
-                  <TableRow
-                    key={contact.id}
-                    data-contact-id={contact.id}
-                    className={cn(
-                      "hover:bg-muted/50 cursor-pointer transition-none",
-                      isSelected && "bg-blue-100 dark:bg-blue-900/50 hover:bg-blue-200 dark:hover:bg-blue-900/60",
-                      isActiveCall && "bg-green-100 dark:bg-green-900/20 hover:bg-green-200 dark:hover:bg-green-900/30"
-                    )}
-                    onClick={() => onSelectContact(contact)}
-                  >
-                   {visibleOrderedColumns.map(column => (
-                      <TableCell
-                        key={column.id}
-                        className={cn(
-                          "px-2 py-1.5 text-xs text-center align-middle",
-                          column.minWidth && `min-w-[${column.minWidth}]`
-                        )}
-                        style={{ 
-                          width: column.width,
-                          minWidth: column.minWidth
-                        }}
-                      >
-                        <div className="flex items-center justify-center min-h-[32px]">
-                          {renderCellContent(contact, column)}
-                        </div>
-                      </TableCell>
-                   ))}
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-        </div>
+                      return (
+                        <motion.tr
+                          key={contact.id}
+                          data-contact-id={contact.id}
+                          className={cn(
+                            // Ligne normale non sélectionnée
+                            !isSelected && "hover:bg-muted/50",
+                            "cursor-pointer transition-colors duration-150",
+                            // Style lorsque la ligne est sélectionnée
+                            isSelected && (theme === Theme.Dark
+                              ? "bg-blue-900/60 text-oled-text"
+                              : "bg-blue-200 text-light-text"),
+                            // Style spécifique à l'appel actif
+                            isActiveCall && (!isSelected
+                              ? (theme === Theme.Dark
+                                  ? "bg-green-900/20 hover:bg-green-900/30"
+                                  : "bg-green-100 hover:bg-green-200")
+                              : "")
+                          )}
+                          onClick={() => onSelectContact(contact)}
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ 
+                            duration: 0.2,
+                            delay: contactIndex * 0.01 // Stagger effect
+                          }}
+                        >
+                         {visibleOrderedColumns.map(column => (
+                            <TableCell
+                              key={column.id}
+                              className={cn(
+                                "px-2 py-1.5 text-xs text-center align-middle",
+                                column.minWidth && `min-w-[${column.minWidth}]`
+                              )}
+                              style={{ 
+                                width: column.width,
+                                minWidth: column.minWidth
+                              }}
+                              onDoubleClick={() => {
+                                if (column.key !== 'actions') {
+                                  handleCellDoubleClick(contact.id, column.key as keyof Contact, contact[column.key as keyof Contact]);
+                                }
+                              }}
+                            >
+                              <div className="flex items-center justify-center min-h-[32px]">
+                                {renderCellContent(contact, column)}
+                              </div>
+                            </TableCell>
+                         ))}
+                        </motion.tr>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </motion.div>
+            )}
+          </AnimatePresence>
+          
+          {/* Overlay de drag & drop */}
+          <DragOverlay isDragOver={isDragOver} />
+        </motion.div>
       </div>
-
-      {contacts.length === 0 && (
-        <div className="text-center py-12 text-muted-foreground">
-          <FileText className="h-12 w-12 mx-auto mb-4 opacity-50" />
-          <p className="text-lg font-medium">Aucun contact trouvé</p>
-          <p className="text-sm">Importez des contacts pour commencer</p>
-        </div>
-      )}
     </div>
   );
 });
 
 ContactTable.displayName = 'ContactTable';
+

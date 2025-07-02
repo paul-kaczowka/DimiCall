@@ -1142,15 +1142,87 @@ table:has(.sticky-table-header),
 .virtual-table-container::-webkit-scrollbar-track,
 .virtual-table-container *::-webkit-scrollbar-track {
   display: none !important;
-  -webkit-appearance: none !important;
-  appearance: none !important;
 }
 
 .virtual-table-container::-webkit-scrollbar-thumb,
 .virtual-table-container *::-webkit-scrollbar-thumb {
   display: none !important;
-  -webkit-appearance: none !important;
-  appearance: none !important;
+}
+
+/* NOUVELLE CLASSE: Cacher uniquement la scrollbar horizontale */
+.hide-scrollbar-horizontal-only {
+  /* Garder la fonctionnalité de scroll horizontal */
+  overflow-x: auto;
+  overflow-y: auto;
+}
+
+/* Firefox - cacher uniquement la scrollbar horizontale */
+.hide-scrollbar-horizontal-only {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+
+/* Webkit browsers - cacher uniquement la scrollbar horizontale */
+.hide-scrollbar-horizontal-only::-webkit-scrollbar:horizontal {
+  height: 0 !important;
+  display: none !important;
+}
+
+.hide-scrollbar-horizontal-only::-webkit-scrollbar-track:horizontal {
+  height: 0 !important;
+  display: none !important;
+  background: transparent !important;
+}
+
+.hide-scrollbar-horizontal-only::-webkit-scrollbar-thumb:horizontal {
+  height: 0 !important;
+  display: none !important;
+  background: transparent !important;
+}
+
+.hide-scrollbar-horizontal-only::-webkit-scrollbar-corner {
+  display: none !important;
+  background: transparent !important;
+}
+
+/* Alternative pour une approche plus universelle */
+.table-hide-horizontal-scrollbar {
+  overflow-x: auto;
+  overflow-y: auto;
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE/Edge */
+}
+
+.table-hide-horizontal-scrollbar::-webkit-scrollbar {
+  width: 12px; /* Garder la scrollbar verticale */
+  height: 0; /* Supprimer la scrollbar horizontale */
+}
+
+.table-hide-horizontal-scrollbar::-webkit-scrollbar:horizontal {
+  height: 0 !important;
+  display: none !important;
+}
+
+.table-hide-horizontal-scrollbar::-webkit-scrollbar-track:horizontal {
+  display: none !important;
+}
+
+.table-hide-horizontal-scrollbar::-webkit-scrollbar-thumb:horizontal {
+  display: none !important;
+}
+
+/* Styles pour les tables avec data-slot (shadcn/ui) */
+[data-slot="table-header"].hide-horizontal-scrollbar,
+.table-container.hide-horizontal-scrollbar {
+  overflow-x: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+[data-slot="table-header"].hide-horizontal-scrollbar::-webkit-scrollbar:horizontal,
+.table-container.hide-horizontal-scrollbar::-webkit-scrollbar:horizontal {
+  height: 0 !important;
+  display: none !important;
 }
 
 /* Fix pour forcer l'opacité des dropdowns - DÉFINITIF */

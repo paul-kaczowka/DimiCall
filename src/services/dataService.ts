@@ -211,14 +211,6 @@ const normalizeHeader = (header: string): string => {
     return mapping[cleaned];
   }
   
-  // Recherche approximative pour les cas non prévus
-  for (const [key, value] of Object.entries(mapping)) {
-    if (cleaned.includes(key) || key.includes(cleaned)) {
-      console.log(`🔄 Mapping approximatif détecté: "${header}" → "${value}" (via "${key}")`);
-      return value;
-    }
-  }
-  
   // Si aucun mapping trouvé, retourner le header nettoyé
   console.warn(`⚠️ En-tête non reconnu: "${header}" → "${cleaned}"`);
   return cleaned;
@@ -361,26 +353,28 @@ export const importContactsFromFile = async (file: File): Promise<Contact[]> => 
           
           // Traitement par chunks pour éviter le blocage de l'UI
           try {
-            const chunkContacts = results.data.map((row: any) => {
+            const normalizedHeaders = results.meta.fields.map(normalizeHeader);
+
+            const chunkContacts = results.data.map((row: any, index: number) => {
               rowIndex++;
-              return {
+              const contactData: Partial<Contact> = {
                 id: uuidv4(),
                 numeroLigne: rowIndex,
-                prenom: row['Prénom'] || row['prenom'] || row['Prenom'] || '',
-                nom: row['Nom'] || row['nom'] || '',
-                telephone: formatPhoneNumber(row['Numéro'] || row['Téléphone'] || row['telephone'] || row['numero'] || ''),
-                email: row['mail'] || row['Email'] || row['email'] || '',
-                source: row['École'] || row['ecole'] || row['source'] || '',
-                statut: Object.values(ContactStatus).includes(row.statut) ? row.statut : ContactStatus.NonDefini,
-                commentaire: row.commentaire || '',
-                dateRappel: row.dateRappel || '',
-                heureRappel: row.heureRappel || '',
-                dateRDV: row.dateRDV || '',
-                heureRDV: row.heureRDV || '',
-                dateAppel: row.dateAppel || '',
-                heureAppel: row.heureAppel || '',
-                dureeAppel: row.dureeAppel || '',
               };
+
+              (results.meta.fields || []).forEach((originalHeader: string, i: number) => {
+                const normalized = normalizedHeaders[i];
+                if (normalized) {
+                  (contactData as any)[normalized] = row[originalHeader];
+                }
+              });
+
+              // Format phone number after mapping
+              if (contactData.telephone) {
+                contactData.telephone = formatPhoneNumber(contactData.telephone);
+              }
+
+              return contactData as Contact;
             });
             
             contacts.push(...chunkContacts);
@@ -433,34 +427,22 @@ export const importContactsFromFile = async (file: File): Promise<Contact[]> => 
           const sheetName = workbook.SheetNames[0];
           const worksheet = workbook.Sheets[sheetName];
           
-          // 🚀 Utiliser le mode dense si disponible pour économiser la mémoire
-          let jsonData;
-          if (worksheet['!data']) {
-            // Mode dense - données stockées dans un tableau 2D
-            jsonData = worksheet['!data'];
-          } else {
-            // Mode normal
-            jsonData = XLSX.utils.sheet_to_json(worksheet, { 
-              header: 1,
-              defval: '', // Valeur par défaut pour les cellules vides
-              raw: true // Éviter les conversions automatiques
-            });
+          // 📄 Traitement Excel optimisé avec gestion progressive
+          const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: "" });
+          
+          if (jsonData.length === 0) {
+            throw new Error('Le fichier Excel est vide');
           }
           
-          if (jsonData.length < 2) {
-            reject(new Error('Le fichier Excel doit contenir au moins une ligne d\'en-têtes et une ligne de données'));
-            return;
-          }
-          
-          console.log(`📋 Traitement de ${jsonData.length} lignes (${fileSizeInMB.toFixed(1)}MB)`);
-          
-          const headers = (jsonData[0] as string[]).map(h => normalizeHeader(h.toString().trim()));
+          // 1. Extraire les en-têtes originaux de la première ligne
+          const originalHeaders = (jsonData[0] as string[]).map(h => h ? h.toString().trim() : '');
+          const normalizedHeaders = originalHeaders.map(h => normalizeHeader(h));
           const contacts: Contact[] = [];
           
           // 📊 Validation des en-têtes pour Excel
-          const headerAnalysis = analyzeHeaders(headers);
+          const headerAnalysis = analyzeHeaders(normalizedHeaders);
           console.log('📊 Analyse des en-têtes Excel:');
-          console.log('En-têtes détectés:', headers);
+          console.log('En-têtes détectés:', originalHeaders);
           console.log('Mappings:', headerAnalysis.mappings);
           
           if (headerAnalysis.warnings.length > 0) {
@@ -482,61 +464,36 @@ export const importContactsFromFile = async (file: File): Promise<Contact[]> => 
               const row = chunk[j] as any[];
               if (!row || row.length === 0) continue; // Ignorer les lignes vides
               
-              const contact: Contact = {
+              const contactData: Partial<Contact> = {
                 id: uuidv4(),
                 numeroLigne: i + j,
-                prenom: '',
-                nom: '',
-                telephone: '',
-                email: '',
-                source: '',
-                statut: ContactStatus.NonDefini,
-                commentaire: '',
-                dateRappel: '',
-                heureRappel: '',
-                dateRDV: '',
-                heureRDV: '',
-                dateAppel: '',
-                heureAppel: '',
-                dureeAppel: '',
               };
-              
-              // 🎯 Mapping optimisé des en-têtes
-              headers.forEach((header, index) => {
-                const cellValue = row[index];
-                const value = cellValue !== null && cellValue !== undefined ? cellValue.toString().trim() : '';
-                
-                switch (header) {
-                  case 'prenom':
-                    contact.prenom = value;
-                    break;
-                  case 'nom':
-                    contact.nom = value;
-                    break;
-                  case 'telephone':
-                  case 'numero':
-                    contact.telephone = formatPhoneNumber(value);
-                    break;
-                  case 'email':
-                  case 'mail':
-                    contact.email = value;
-                    break;
-                  case 'ecole':
-                  case 'source':
-                    contact.source = value;
-                    break;
-                  case 'statut':
-                    contact.statut = Object.values(ContactStatus).includes(value as ContactStatus) ? value as ContactStatus : ContactStatus.NonDefini;
-                    break;
-                  case 'commentaire':
-                    contact.commentaire = value;
-                    break;
+
+              // Mapper chaque colonne en utilisant l'en-tête original pour récupérer la valeur
+              // et l'en-tête normalisé pour l'assigner au bon champ
+              originalHeaders.forEach((originalHeader, index) => {
+                const normalizedField = normalizedHeaders[index];
+                if (normalizedField && row[index] !== undefined && row[index] !== null) {
+                  const cellValue = row[index].toString().trim();
+                  if (cellValue) {
+                    (contactData as any)[normalizedField] = cellValue;
+                  }
                 }
               });
-              
+
+              // Format phone number after mapping
+              if (contactData.telephone) {
+                contactData.telephone = formatPhoneNumber(String(contactData.telephone));
+              }
+
+              // Set default status if not provided
+              if (!contactData.statut) {
+                contactData.statut = ContactStatus.NonDefini;
+              }
+
               // Ne pas ajouter les contacts complètement vides
-              if (contact.prenom || contact.nom || contact.telephone || contact.email) {
-                chunkContacts.push(contact);
+              if (contactData.prenom || contactData.nom || contactData.telephone || contactData.email) {
+                chunkContacts.push(contactData as Contact);
               }
             }
             
@@ -957,131 +914,3 @@ export const getImportedTableMetadata = (): {
   }
 };
 
-// ========================================
-// FONCTIONS SPÉCIFIQUES POUR DIMITABLE
-// ========================================
-
-/**
- * Exporte les données sélectionnées de DimiTable au format XLSX
- */
-export const exportDimiTableToExcel = (selectedData: any[], filename?: string): void => {
-  if (!selectedData || selectedData.length === 0) {
-    throw new Error('Aucune donnée à exporter');
-  }
-
-  try {
-    // Créer un nouveau workbook
-    const workbook = XLSX.utils.book_new();
-    
-    // Convertir les données en worksheet
-    const worksheet = XLSX.utils.json_to_sheet(selectedData);
-    
-    // Ajouter le worksheet au workbook
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'DimiTable Export');
-    
-    // Générer le nom de fichier avec timestamp
-    const timestamp = new Date().toISOString().slice(0, 10);
-    const finalFilename = filename || `dimitable_export_${timestamp}.xlsx`;
-    
-    // Télécharger le fichier
-    XLSX.writeFile(workbook, finalFilename);
-    
-    console.log(`✅ Export réussi: ${selectedData.length} lignes exportées vers ${finalFilename}`);
-  } catch (error) {
-    console.error('❌ Erreur lors de l\'export Excel:', error);
-    throw new Error('Erreur lors de l\'export Excel');
-  }
-};
-
-/**
- * Importe des données depuis un fichier Excel/CSV pour mise à jour dans Supabase
- */
-export const importDataForDimiTable = async (file: File): Promise<{
-  data: any[];
-  headers: string[];
-  preview: any[];
-  totalRows: number;
-}> => {
-  return new Promise((resolve, reject) => {
-    const fileExtension = file.name.split('.').pop()?.toLowerCase();
-    
-    if (fileExtension === 'xlsx' || fileExtension === 'xls') {
-      // Traitement Excel
-      const reader = new FileReader();
-             reader.onload = (e) => {
-         try {
-           const arrayBuffer = e.target?.result as ArrayBuffer;
-           const uint8Array = new Uint8Array(arrayBuffer);
-           const workbook = XLSX.read(uint8Array, { type: 'array' });
-           const sheetName = workbook.SheetNames[0];
-           const worksheet = workbook.Sheets[sheetName];
-           
-           // Convertir en JSON avec headers
-           const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as any[][];
-           
-           if (jsonData.length === 0) {
-             reject(new Error('Le fichier est vide'));
-             return;
-           }
-           
-           const headers = jsonData[0] as string[];
-           const rows = jsonData.slice(1).filter((row: any[]) => {
-             // Filtrer les lignes vides
-             return Array.isArray(row) && row.some(cell => cell !== null && cell !== undefined && String(cell).trim() !== '');
-           });
-           
-           // Convertir les lignes en objets
-           const processedData = rows.map((row: any[]) => {
-             const obj: any = {};
-             headers.forEach((header, index) => {
-               obj[header] = row[index] || '';
-             });
-             return obj;
-           });
-           
-           const preview = processedData.slice(0, 5); // Aperçu des 5 premières lignes
-           
-           resolve({
-             data: processedData,
-             headers,
-             preview,
-             totalRows: processedData.length
-           });
-         } catch (error: any) {
-           reject(new Error('Erreur lors de la lecture du fichier Excel: ' + (error?.message || error)));
-        }
-      };
-      reader.readAsArrayBuffer(file);
-      
-    } else if (fileExtension === 'csv') {
-      // Traitement CSV avec Papa Parse
-      Papa.parse(file, {
-        header: true,
-        skipEmptyLines: true,
-        encoding: 'UTF-8',
-        complete: (results) => {
-          if (results.errors.length > 0) {
-            reject(new Error('Erreurs dans le fichier CSV: ' + results.errors.map(e => e.message).join(', ')));
-            return;
-          }
-          
-          const data = results.data as any[];
-          const headers = results.meta.fields || [];
-          const preview = data.slice(0, 5);
-          
-          resolve({
-            data,
-            headers,
-            preview,
-            totalRows: data.length
-          });
-        },
-        error: (error) => {
-          reject(new Error('Erreur lors de la lecture du fichier CSV: ' + error.message));
-        }
-      });
-    } else {
-      reject(new Error('Format de fichier non supporté. Utilisez .xlsx, .xls ou .csv'));
-    }
-  });
-};

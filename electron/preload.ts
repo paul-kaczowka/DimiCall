@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron'
+import { contextBridge, ipcRenderer, IpcRendererEvent } from 'electron'
 
 // Interface personnalisée pour l'API exposée au renderer
 interface ElectronAPI {
@@ -34,6 +34,12 @@ interface ElectronAPI {
     startServer: () => Promise<{ success: boolean; message?: string; error?: string }>
     cleanAuthKeys: () => Promise<{ success: boolean; message?: string; error?: string; deletedFiles?: string[] }>
   }
+  
+  // API pour les mises à jour
+  checkForUpdates: () => void;
+  onUpdateStatus: (callback: (status: string, details?: any) => void) => (() => void);
+  restartAndInstall: () => void;
+  getAppVersion: () => Promise<string>;
 }
 
 // API personnalisée à exposer dans la sandbox du navigateur
@@ -89,7 +95,24 @@ const electronAPI: ElectronAPI = {
     killServer: () => ipcRenderer.invoke('adb:kill-server'),
     startServer: () => ipcRenderer.invoke('adb:start-server'),
     cleanAuthKeys: () => ipcRenderer.invoke('adb:clean-auth-keys')
-  }
+  },
+  
+  // API pour les mises à jour
+  checkForUpdates: () => {
+    ipcRenderer.send('check-for-updates');
+  },
+  onUpdateStatus: (callback: (status: string, details?: any) => void) => {
+    const listener = (_event: IpcRendererEvent, status: string, details: any) => callback(status, details);
+    ipcRenderer.on('update-status', listener);
+    
+    return () => {
+      ipcRenderer.removeListener('update-status', listener);
+    };
+  },
+  restartAndInstall: () => {
+    ipcRenderer.send('restart-app');
+  },
+  getAppVersion: () => ipcRenderer.invoke('get-app-version')
 }
 
 // Utiliser `contextBridge` APIs pour exposer Electron APIs au

@@ -88,7 +88,19 @@ export enum QualificationSituationPro {
     CDD = "CDD",
     CDI = "CDI",
     ChefEntreprise = "Chef d'entreprise",
+    Freelance = "Freelance",
     Chomeur = "Chômeur",
     Retraite = "Retraité",
     Etudiant = "Étudiant",
+}
+
+export interface ElectronAPI {
+  checkForUpdates: () => void;
+  onUpdateStatus: (callback: (status: string, details?: any) => void) => () => void;
+  restartAndInstall: () => void;
+  getAppVersion: () => Promise<{ version: string }>;
+}
+
+export interface Window {
+  // ... existing code ...
 }

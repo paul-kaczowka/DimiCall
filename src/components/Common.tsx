@@ -1,14 +1,15 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { Theme } from '../types';
-import { Button as ShadcnButton } from './ui/button';
-import { Input as ShadcnInput } from './ui/input';
-import { Select as ShadcnSelect, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
-import { Label } from './ui/label';
-import { Progress } from './ui/progress';
-import { Card, CardContent } from './ui/card';
-import { Badge } from './ui/badge';
+import { Button as ShadcnButton } from '@/components/ui/button';
+import { Input as ShadcnInput } from '@/components/ui/input';
+import { Select as ShadcnSelect, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Label } from '@/components/ui/label';
+import { Progress } from '@/components/ui/progress';
+import { Card, CardContent } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 import { cn } from '../lib/utils';
-import { Upload, X, CheckCircle, AlertCircle } from 'lucide-react';
+import { Upload, CheckCircle, AlertCircle, X } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose } from '@/components/ui/dialog';
 
 // Types pour les composants
 interface ButtonProps {
@@ -387,50 +388,30 @@ export const Modal: React.FC<ModalProps> = ({
   size = 'md', 
   className 
 }) => {
-  if (!isOpen) return null;
-
-  const sizeClasses = {
-    sm: 'max-w-md',
-    md: 'max-w-lg',
-    lg: 'max-w-2xl',
-    xl: 'max-w-4xl'
+  const sizeClasses: Record<string, string> = {
+    sm: 'sm:max-w-md',
+    md: 'sm:max-w-lg',
+    lg: 'sm:max-w-2xl',
+    xl: 'sm:max-w-4xl',
   };
 
   return (
-    <div className="fixed inset-0 z-[200] flex items-center justify-center">
-      {/* Backdrop */}
-      <div 
-        className="absolute inset-0 bg-black/80 backdrop-blur-sm animate-in fade-in-0 duration-200"
-        onClick={onClose}
-      />
-      
-      {/* Modal */}
-      <Card className={cn(
-        "relative w-full mx-4 animate-in zoom-in-95 duration-200",
-        "bg-card text-card-foreground border shadow-2xl",
-        "max-h-[90vh] overflow-y-auto",
-        sizeClasses[size],
-        className
-      )}>
+    <Dialog open={isOpen} onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent className={cn(sizeClasses[size], className)}>
         {title && (
-          <div className="flex items-center justify-between p-6 border-b bg-card text-card-foreground sticky top-0 z-10">
-            <h2 className="text-lg font-semibold text-card-foreground">{title}</h2>
-            <Button
-              onClick={onClose}
-              variant="ghost"
-              size="sm"
-              className="h-8 w-8 p-0 hover:bg-muted"
-            >
-              <X className="w-4 h-4" />
-            </Button>
-          </div>
+          <DialogHeader>
+            <DialogTitle>{title}</DialogTitle>
+          </DialogHeader>
         )}
-        
-        <CardContent className="p-6 bg-card text-card-foreground">
-          {children}
-        </CardContent>
-      </Card>
-    </div>
+        {children}
+        <DialogClose asChild>
+          <button className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none">
+            <X className="h-4 w-4" />
+            <span className="sr-only">Fermer</span>
+          </button>
+        </DialogClose>
+      </DialogContent>
+    </Dialog>
   );
 };
 

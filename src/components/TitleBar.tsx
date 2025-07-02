@@ -1,22 +1,19 @@
 import React, { useState, useEffect } from 'react';
-import { Minus, Square, X, Maximize, Settings, ChevronDown, User, Smartphone, WifiOff, Loader2 } from 'lucide-react';
+import { Minus, Square, X, Maximize, Settings, User, Smartphone, WifiOff, Loader2, MailQuestion } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Theme } from '../types';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
+
 import { UserProfileDialog } from './UserProfileDialog';
-import { useCustomAuth } from '../lib/auth-client';
+import { useSupabaseAuth } from '../lib/auth-client';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
+import { TicketForm } from './TicketForm';
+import packageJson from '../../package.json';
 
 interface CustomMenuBarProps {
   theme: Theme;
-  activeTab?: 'dimicall' | 'dimitable';
-  onTabChange?: (tab: 'dimicall' | 'dimitable') => void;
+  activeTab?: 'dimicall';
+  onTabChange?: (tab: 'dimicall') => void;
   showDimiTable?: boolean;
   onSettingsClick?: () => void;
   userName?: string;
@@ -40,10 +37,12 @@ export const CustomMenuBar: React.FC<CustomMenuBarProps> = ({
   activeCallContactId,
   onAdbClick
 }) => {
-  const auth = useCustomAuth();
+  const auth = useSupabaseAuth();
   const [isMaximized, setIsMaximized] = useState(false);
   const [isElectron, setIsElectron] = useState(false);
   const [isProfileDialogOpen, setIsProfileDialogOpen] = useState(false);
+  const [isTicketFormOpen, setIsTicketFormOpen] = useState(false);
+  const appVersion = packageJson.version;
 
   useEffect(() => {
     // Vérifier si nous sommes dans Electron
@@ -71,6 +70,14 @@ export const CustomMenuBar: React.FC<CustomMenuBarProps> = ({
     };
   }, []);
 
+  // Empêcher l'ouverture automatique du profil utilisateur après connexion
+  useEffect(() => {
+    // S'assurer que le dialog du profil reste fermé par défaut
+    if (auth.isAuthenticated && isProfileDialogOpen) {
+      setIsProfileDialogOpen(false);
+    }
+  }, [auth.isAuthenticated]);
+
   const handleMinimize = async () => {
     if (window.electronAPI) {
       await window.electronAPI.minimizeApp();
@@ -88,12 +95,6 @@ export const CustomMenuBar: React.FC<CustomMenuBarProps> = ({
   const handleClose = async () => {
     if (window.electronAPI) {
       await window.electronAPI.closeApp();
-    }
-  };
-
-  const handleTabClick = (tab: 'dimicall' | 'dimitable') => {
-    if (onTabChange) {
-      onTabChange(tab);
     }
   };
 
@@ -125,11 +126,7 @@ export const CustomMenuBar: React.FC<CustomMenuBarProps> = ({
   };
 
   const getCurrentTabLabel = () => {
-    switch (activeTab) {
-      case 'dimicall': return 'DimiCall';
-      case 'dimitable': return 'DimiTable';
-      default: return 'DimiCall';
-    }
+    return 'DimiCall';
   };
 
   // Fonction pour générer une image de profil optimisée (SVG inline léger)
@@ -165,43 +162,10 @@ export const CustomMenuBar: React.FC<CustomMenuBarProps> = ({
         className="flex items-center h-full pointer-events-auto"
         style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
       >
-        {/* Dropdown DimiCRM */}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button className="flex items-center px-3 py-1 gap-1 hover:bg-[hsl(var(--muted))] rounded-sm transition-colors focus:outline-none">
-              <span className={cn("text-sm font-semibold", textColor)}>DimiCRM</span>
-              <ChevronDown className="w-3 h-3 text-muted-foreground" />
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="min-w-[120px]">
-            <DropdownMenuItem 
-              onClick={() => handleTabClick('dimicall')}
-              className={cn(
-                "cursor-pointer",
-                activeTab === 'dimicall' && "bg-[hsl(var(--accent))]"
-              )}
-            >
-              DimiCall
-              {activeTab === 'dimicall' && (
-                <div className="ml-auto w-2 h-2 bg-[hsl(var(--primary))] rounded-full" />
-              )}
-            </DropdownMenuItem>
-            {showDimiTable && (
-              <DropdownMenuItem 
-                onClick={() => handleTabClick('dimitable')}
-                className={cn(
-                  "cursor-pointer",
-                  activeTab === 'dimitable' && "bg-[hsl(var(--accent))]"
-                )}
-              >
-                DimiTable
-                {activeTab === 'dimitable' && (
-                  <div className="ml-auto w-2 h-2 bg-[hsl(var(--primary))] rounded-full" />
-                )}
-              </DropdownMenuItem>
-            )}
-          </DropdownMenuContent>
-        </DropdownMenu>
+        {/* Logo et nom DimiCall */}
+        <div className="flex items-center px-3 py-1 gap-2">
+          <span className={cn("text-sm font-semibold", textColor)}>DimiCall</span>
+        </div>
 
 
       </div>
@@ -252,12 +216,12 @@ export const CustomMenuBar: React.FC<CustomMenuBarProps> = ({
           <div className="relative">
             <Avatar className="w-5 h-5">
               <AvatarImage 
-                src={generateProfileImage(auth.user?.firstName || userName)} 
-                alt={auth.user?.firstName || userName}
+                src={generateProfileImage(auth.user?.email || userName)} 
+                alt={auth.user?.email || userName}
                 className="object-cover"
               />
               <AvatarFallback className="text-xs bg-[hsl(var(--muted-foreground))] text-[hsl(var(--background))]">
-                {(auth.user?.firstName || userName).slice(0, 2).toUpperCase()}
+                {(auth.user?.email || userName).slice(0, 2).toUpperCase()}
               </AvatarFallback>
             </Avatar>
             <div className={cn(
@@ -266,7 +230,7 @@ export const CustomMenuBar: React.FC<CustomMenuBarProps> = ({
             )} />
           </div>
           <span className="text-xs font-medium text-[hsl(var(--foreground))] max-w-[80px] truncate">
-            {auth.user?.firstName || userName.split(' ')[0]}
+            {auth.user?.email?.split('@')[0] || userName.split(' ')[0]}
           </span>
         </button>
       </div>
@@ -278,6 +242,17 @@ export const CustomMenuBar: React.FC<CustomMenuBarProps> = ({
           style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
         >
           <button
+            onClick={() => setIsTicketFormOpen(true)}
+            className={cn(
+              "p-2 rounded transition-all duration-200 focus:outline-none",
+              buttonHoverBg,
+              textColor
+            )}
+            title="Envoyer un ticket"
+          >
+            <MailQuestion className="w-4 h-4" />
+          </button>
+          <button
             onClick={onSettingsClick}
             className={cn(
               "p-2 rounded transition-all duration-200 focus:outline-none",
@@ -286,7 +261,7 @@ export const CustomMenuBar: React.FC<CustomMenuBarProps> = ({
             )}
             title="Réglages"
           >
-            <Settings size={14} />
+            <Settings className="w-4 h-4" />
           </button>
         </div>
       )}
@@ -346,8 +321,16 @@ export const CustomMenuBar: React.FC<CustomMenuBarProps> = ({
       <UserProfileDialog
         isOpen={isProfileDialogOpen}
         onClose={() => setIsProfileDialogOpen(false)}
-        userName={auth.user?.firstName || userName}
+        userName={auth.user?.email || userName}
         userStatus={userStatus}
+      />
+
+      {/* Formulaire de ticket */}
+      <TicketForm 
+        isOpen={isTicketFormOpen} 
+        onOpenChange={setIsTicketFormOpen}
+        userEmail={auth.user?.email}
+        appVersion={appVersion}
       />
     </div>
   );

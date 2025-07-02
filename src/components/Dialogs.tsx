@@ -2,8 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { Contact, Theme, EmailType, Civility, QualificationStatutMarital, QualificationSituationPro } from '../types';
 import { Button, Input, Select, Modal } from './Common';
 import { generateGmailComposeUrl } from '../services/dataService';
-import { Label } from './ui/label';
-import { Textarea } from './ui/textarea';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import { 
   Dialog, 
   DialogContent, 
@@ -11,9 +11,9 @@ import {
   DialogFooter, 
   DialogHeader, 
   DialogTitle 
-} from './ui/dialog';
-import { Button as ShadcnButton } from './ui/button';
-import { Input as ShadcnInput } from './ui/input';
+} from '@/components/ui/dialog';
+import { Button as ShadcnButton } from '@/components/ui/button';
+import { Input as ShadcnInput } from '@/components/ui/input';
 
 interface EmailDialogProps {
   isOpen: boolean;
@@ -202,7 +202,7 @@ const QualificationDialog: React.FC<QualificationDialogProps> = ({ isOpen, onClo
     const chg = parseFloat(charges) || 0;
     let calculatedResult = 0;
     if (rev > 0) {
-      calculatedResult = situationPro === QualificationSituationPro.ChefEntreprise ? chg / rev : chg / (rev * 0.77);
+      calculatedResult = (situationPro === QualificationSituationPro.ChefEntreprise || situationPro === QualificationSituationPro.Freelance) ? chg / rev : chg / (rev * 0.77);
       setResultat(calculatedResult.toFixed(2));
     } else {
       setResultat('N/A');

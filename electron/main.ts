@@ -1,11 +1,34 @@
-import { app, shell, BrowserWindow, ipcMain, globalShortcut } from 'electron'
-import { join } from 'node:path'
+import * as dotenv from 'dotenv'
+import * as path from 'path'
+import { app, shell, BrowserWindow, ipcMain, globalShortcut, dialog } from 'electron'
+import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { spawn, exec } from 'child_process'
 import { promisify } from 'util'
 import * as fs from 'fs'
+import EUpdater from 'electron-updater'
+import log from 'electron-log'
+const { autoUpdater } = EUpdater
+
+// Load environment variables from .env file at the very start
+dotenv.config({ path: path.resolve(app.getAppPath(), '..', '.env') })
 
 const execAsync = promisify(exec)
+
+// Configuration de electron-log pour autoUpdater
+log.transports.file.level = 'debug'
+log.transports.console.level = 'debug'
+autoUpdater.logger = log
+
+// Si le dépôt est privé, configurer le token d'accès
+if (process.env.GH_TOKEN) {
+  autoUpdater.requestHeaders = { Authorization: `token ${process.env.GH_TOKEN}` }
+  log.info('Token GH trouvé, configuration des headers pour le dépôt privé.')
+} else {
+  log.warn('Aucun token GH trouvé, les mises à jour pour les dépôts privés pourraient échouer.')
+}
+
+autoUpdater.forceDevUpdateConfig = true
 
 // Initialisation ICU forcée avant toute autre chose
 console.log('🔧 Démarrage de l\'application DimiCall...')
@@ -57,7 +80,7 @@ function getAdbPath(): string {
   return join(process.resourcesPath, 'platform-tools', 'adb.exe')
 }
 
-function createWindow(): void {
+function createWindow(): BrowserWindow {
   console.log('🚀 Création de la fenêtre principale...')
   
   // Créer la fenêtre de navigateur principale
@@ -72,6 +95,7 @@ function createWindow(): void {
     titleBarOverlay: false,
     frame: false, // Pas de cadre natif pour permettre la barre de titre personnalisée
     backgroundColor: '#ffffff', // Couleur de fond blanche pour éviter l'écran noir
+    icon: join(__dirname, '../../public/logo-d.png'), // Correction du chemin de l'icône
     webPreferences: {
       preload: join(__dirname, '../preload/preload.mjs'),
       sandbox: false,
@@ -139,7 +163,7 @@ function createWindow(): void {
 
   // S'assurer que la fenêtre s'affiche même en cas de problème
   setTimeout(() => {
-    if (!mainWindow.isVisible()) {
+    if (mainWindow && !mainWindow.isVisible()) {
       console.log('⚠️ Forçage de l\'affichage de la fenêtre après délai')
       mainWindow.show()
       // Ouvrir les DevTools en cas de problème
@@ -200,6 +224,7 @@ function createWindow(): void {
   }
   
   console.log('✨ Configuration de la fenêtre terminée')
+  return mainWindow
 }
 
 // Cette méthode sera appelée quand Electron aura fini
@@ -211,6 +236,74 @@ app.whenReady().then(() => {
   // Définir l'id de l'app pour les notifications Windows 10+
   electronApp.setAppUserModelId('com.dimultra.dimicall')
   console.log('🏷️ App ID défini: com.dimultra.dimicall')
+
+  const mainWindow = createWindow()
+
+  // Configuration et lancement des mises à jour
+  if (!is.dev) {
+    console.log('🚀 Recherche de mises à jour en production...')
+    autoUpdater.checkForUpdatesAndNotify()
+  } else {
+    console.log('⚠️ Mode développement: forçage de la configuration de mise à jour.')
+    autoUpdater.forceDevUpdateConfig = true;
+  }
+  
+  // Gérer la communication pour les mises à jour manuelles
+  ipcMain.on('check-for-updates', () => {
+    console.log('IPC: Demande de vérification de mise à jour reçue.');
+    autoUpdater.checkForUpdates();
+  });
+
+  ipcMain.on('restart-app', () => {
+    autoUpdater.quitAndInstall()
+  })
+
+  ipcMain.on('get-app-version', (event) => {
+    event.sender.send('app-version', { version: app.getVersion() })
+  })
+
+  const sendUpdateStatusToWindow = (status: string) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      console.log('Envoi du statut au renderer:', status);
+      mainWindow.webContents.send('update-status', status);
+    }
+  };
+
+  autoUpdater.on('checking-for-update', () => {
+    sendUpdateStatusToWindow('🔍 Recherche de mises à jour en cours...');
+  });
+  autoUpdater.on('update-available', (info) => {
+    sendUpdateStatusToWindow(`✅ Mise à jour disponible (${info.version}).`);
+  });
+  autoUpdater.on('update-not-available', (info) => {
+    sendUpdateStatusToWindow(`✔️ Votre application est à jour (${info.version}).`);
+  });
+  autoUpdater.on('error', (err) => {
+    sendUpdateStatusToWindow(`❌ Erreur de mise à jour: ${err.message}`);
+  });
+  autoUpdater.on('download-progress', (progressObj) => {
+    const log_message = `📥 Téléchargement: ${Math.round(progressObj.percent)}%`;
+    sendUpdateStatusToWindow(log_message);
+  });
+  autoUpdater.on('update-downloaded', (info) => {
+    sendUpdateStatusToWindow(`✅ Mise à jour ${info.version} téléchargée. Redémarrez pour installer.`);
+
+    dialog
+      .showMessageBox({
+        type: 'info',
+        title: 'Mise à jour prête',
+        message: `La nouvelle version ${info.version} de DimiCall a été téléchargée.`,
+        detail: "Voulez-vous redémarrer l'application maintenant pour appliquer la mise à jour ?",
+        buttons: ['Redémarrer maintenant', 'Plus tard'],
+        defaultId: 0,
+        cancelId: 1
+      })
+      .then((returnValue) => {
+        if (returnValue.response === 0) {
+          autoUpdater.quitAndInstall()
+        }
+      })
+  });
 
   // Le raccourci de développement par défaut de 'CommandOrControl + R' est
   // enregistré lors du développement pour aider
@@ -641,8 +734,6 @@ app.whenReady().then(() => {
     }
   })
 
-  createWindow()
-
   // Enregistrer les raccourcis globaux pour les touches de fonction F2-F10
   // Ultra-robuste avec debugging détaillé
   const registerFnKeys = () => {
@@ -659,105 +750,31 @@ app.whenReady().then(() => {
         const keyName = `F${i}`
         try {
           const success = globalShortcut.register(keyName, () => {
-            console.log(`🎯 [ELECTRON_FN] Raccourci global ${keyName} activé`)
-            
-            // Trouver la fenêtre active ou principale
-            const allWindows = BrowserWindow.getAllWindows()
-            const focusedWindow = BrowserWindow.getFocusedWindow() || (allWindows.length > 0 ? allWindows[0] : null)
-            
-            if (focusedWindow && !focusedWindow.isDestroyed()) {
-              console.log(`📤 [ELECTRON_FN] Envoi signal ${keyName} vers renderer`)
-              focusedWindow.webContents.send('global-fn-key', keyName)
-              
-              // Force la fenêtre à reprendre le focus si elle ne l'a pas
-              if (!focusedWindow.isFocused()) {
-                focusedWindow.focus()
-              }
-            } else {
-              console.log(`⚠️ [ELECTRON_FN] Aucune fenêtre active pour ${keyName}`)
+            console.log(`🔧 [ELECTRON_FN] ${keyName} pressé, envoi à la fenêtre renderer...`)
+            if (mainWindow && !mainWindow.isDestroyed()) {
+              mainWindow.webContents.send('global-fn-key', keyName)
             }
           })
-          
           if (success) {
             registeredKeys.push(keyName)
-            console.log(`✅ [ELECTRON_FN] ${keyName} enregistré avec succès`)
           } else {
             failedKeys.push(keyName)
-            console.log(`❌ [ELECTRON_FN] Échec enregistrement ${keyName} (déjà utilisé par système?)`)
           }
-        } catch (keyError) {
+        } catch (error) {
           failedKeys.push(keyName)
-          console.error(`❌ [ELECTRON_FN] Erreur ${keyName}:`, keyError)
         }
       }
       
-      // Raccourci Ctrl+Entrée pour appel d'urgence
-      try {
-        const ctrlEnterSuccess = globalShortcut.register('CommandOrControl+Return', () => {
-          console.log(`🎯 [ELECTRON_FN] Raccourci Ctrl+Entrée activé`)
-          const allWindows = BrowserWindow.getAllWindows()
-          const focusedWindow = BrowserWindow.getFocusedWindow() || (allWindows.length > 0 ? allWindows[0] : null)
-          
-          if (focusedWindow && !focusedWindow.isDestroyed()) {
-            focusedWindow.webContents.send('global-fn-key', 'CtrlEnter')
-            if (!focusedWindow.isFocused()) {
-              focusedWindow.focus()
-            }
-          }
-        })
-        
-        if (ctrlEnterSuccess) {
-          registeredKeys.push('Ctrl+Enter')
-          console.log(`✅ [ELECTRON_FN] Ctrl+Entrée enregistré`)
-        }
-      } catch (ctrlError) {
-        console.error(`❌ [ELECTRON_FN] Erreur Ctrl+Entrée:`, ctrlError)
+      if (registeredKeys.length > 0) {
+        console.log(`🎉 Raccourcis enregistrés: ${registeredKeys.join(', ')}`)
       }
-      
-      console.log(`🎉 [ELECTRON_FN] Enregistrement terminé:`)
-      console.log(`  ✅ Réussis (${registeredKeys.length}): ${registeredKeys.join(', ')}`)
       if (failedKeys.length > 0) {
-        console.log(`  ❌ Échecs (${failedKeys.length}): ${failedKeys.join(', ')}`)
+        console.warn(`❌ Raccourcis non enregistrés: ${failedKeys.join(', ')}`)
       }
-      
-      // Vérifier que les raccourcis sont bien enregistrés
-      const f2Registered = globalShortcut.isRegistered('F2')
-      console.log(`🔍 [ELECTRON_FN] Vérification F2: ${f2Registered ? 'OK' : 'ÉCHEC'}`)
-      
-      return registeredKeys.length > 0
-      
     } catch (error) {
-      console.error('❌ [ELECTRON_FN] Erreur critique lors de l\'enregistrement:', error)
-      return false
+      console.error('❌ Erreur lors de l\'enregistrement des raccourcis:', error)
     }
   }
-  
-  // Enregistrer les raccourcis avec délai pour s'assurer que tout est prêt
-  setTimeout(() => {
-    const success = registerFnKeys()
-    if (!success) {
-      console.log('⚠️ [ELECTRON_FN] Aucun raccourci enregistré, utilisation locale uniquement')
-    }
-  }, 1500) // Délai augmenté pour robustesse
 
-  app.on('activate', function () {
-    // Sur macOS, il est courant de recréer une fenêtre dans l'app quand
-    // l'icône du dock est cliquée et qu'il n'y a pas d'autres fenêtres ouvertes.
-    if (BrowserWindow.getAllWindows().length === 0) createWindow()
-  })
+  registerFnKeys()
 })
-
-// Quitter quand toutes les fenêtres sont fermées, sauf sur macOS. Là, il est courant
-// pour les applications et leur barre de menu de rester actives jusqu'à ce que l'utilisateur quitte
-// explicitement avec Cmd + Q.
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit()
-})
-
-// Nettoyer les raccourcis globaux lors de la fermeture
-app.on('will-quit', () => {
-  globalShortcut.unregisterAll()
-})
-
-// Dans ce fichier, vous pouvez inclure le reste du code du processus principal spécifique de votre app.
-// Vous pouvez aussi le mettre dans des fichiers séparés et les require ici. 

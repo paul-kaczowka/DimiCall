@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog';
-import { Button } from './ui/button';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
 import { AlertTriangle, ExternalLink, RefreshCw, CheckCircle, Loader2, Calendar, Clock } from 'lucide-react';
 import { getCalApi } from "@calcom/embed-react";
 import { Contact } from '../types';

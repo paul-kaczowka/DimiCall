@@ -2,11 +2,11 @@ import React, { useMemo, useRef, useEffect, useState } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { Theme, Contact, CallStates, ContactStatus } from '../types';
 import { STATUS_COLORS } from '../constants';
-import { useCustomAuth } from '../lib/auth-client';
-import { Button } from './ui/button';
-import { Input } from './ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip';
+import { useSupabaseAuth } from '../lib/auth-client';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 // import { Checkbox } from './ui/checkbox'; // N'existe pas encore, on utilisera input type="checkbox"
 import { 
   User as IconUser, 
@@ -101,7 +101,7 @@ export const VirtualizedSupabaseTable: React.FC<VirtualizedSupabaseTableProps> =
   const headerRef = useRef<HTMLDivElement>(null);
   
   // Hook d'authentification pour récupérer l'utilisateur connecté
-  const auth = useCustomAuth();
+  const auth = useSupabaseAuth();
   
   // État pour l'édition des cellules
   const [editingCell, setEditingCell] = useState<EditingCell | null>(null);
@@ -322,9 +322,7 @@ export const VirtualizedSupabaseTable: React.FC<VirtualizedSupabaseTableProps> =
   // Conversion d'un contact raw en Contact
   const convertToContact = (rawContact: any, index: number): Contact => {
     // Récupérer l'utilisateur connecté
-    const nomUtilisateur = auth.user 
-      ? `${auth.user.firstName} ${auth.user.lastName}`
-      : 'Utilisateur inconnu';
+        const nomUtilisateur = auth.user?.email || 'Utilisateur inconnu';
 
     return {
       id: rawContact.UID || rawContact.id || `temp-${index}`,

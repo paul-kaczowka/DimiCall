@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Badge } from './ui/badge';
+import { Badge } from '@/components/ui/badge';
 import { CheckCircle } from 'lucide-react';
 import { Theme } from '../types';
 

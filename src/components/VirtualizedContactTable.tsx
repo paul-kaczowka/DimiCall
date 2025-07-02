@@ -58,13 +58,17 @@ const VirtualRow: React.FC<VirtualRowProps> = ({
 }) => {
   // Gestion des couleurs de ligne selon l'état d'appel
   let rowBgClass = '';
-  
+  const isCallFinished = useMemo(() => {
+    // La seule condition est la présence d'une durée d'appel valide.
+    return contact.dureeAppel && contact.dureeAppel !== 'N/A';
+  }, [contact.dureeAppel]);
+
   if (callState?.isCalling) {
     // Orange pendant l'appel
     rowBgClass = theme === Theme.Dark 
       ? 'bg-orange-600/40 border-orange-500/50 shadow-orange-500/20' 
       : 'bg-orange-200/60 border-orange-400/50 shadow-orange-400/20';
-  } else if (callState?.hasBeenCalled) {
+  } else if (isCallFinished) {
     // Vert après l'appel terminé
     rowBgClass = theme === Theme.Dark 
       ? 'bg-green-600/30 border-green-500/40 shadow-green-500/20' 
@@ -96,11 +100,11 @@ const VirtualRow: React.FC<VirtualRowProps> = ({
         flex items-center cursor-pointer border-b-2 transition-all duration-300 ease-in-out
         ${rowBgClass}
         ${theme === Theme.Dark ? 'text-oled-text' : 'text-light-text'}
-        ${callState?.isCalling ? 'shadow-lg' : callState?.hasBeenCalled ? 'shadow-md' : ''}
+        ${callState?.isCalling ? 'shadow-lg' : isCallFinished ? 'shadow-md' : ''}
       `}
     >
       {/* Indicateur visuel d'état d'appel */}
-      {(callState?.isCalling || callState?.hasBeenCalled) && (
+      {(callState?.isCalling || isCallFinished) && (
         <div className={`
           w-1 h-full absolute left-0 top-0
           ${callState?.isCalling 
