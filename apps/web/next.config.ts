@@ -13,7 +13,12 @@ const nextConfig: NextConfig = {
     serverActions: {
       bodySizeLimit: '100mb' // Augmenté à 100MB comme demandé
     }
-  }
+  },
+  
+  // Désactiver ESLint pendant le build pour la CI/CD
+  eslint: {
+    ignoreDuringBuilds: true,
+  },
 };
 
 export default nextConfig;

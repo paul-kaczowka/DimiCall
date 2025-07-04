@@ -3,8 +3,8 @@
   "private": true,
   "packageManager": "pnpm@10.11.0",
   "scripts": {
-    "dev": "concurrently \"pnpm --filter web dev\" \"pnpm --filter api dev\"",
-    "build": "pnpm --filter web build && pnpm --filter api build"
+    "dev": "concurrently \"npm run dev --workspace=web\" \"npm run dev --workspace=api\"",
+    "build": "npm run build --workspace=web && npm run build --workspace=api"
   },
   "devDependencies": {
     "@types/papaparse": "^5.3.16",
