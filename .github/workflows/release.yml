@@ -1,0 +1,80 @@
+name: 🚀 Build & Release DimiCall
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:   # 🎯 Déclenchement manuel pour les tests !
+
+permissions:
+  contents: write
+
+jobs:
+  build_windows:
+    name: 🪟 Build Windows (.exe)
+    runs-on: windows-latest
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 🟢 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: 📦 Install dependencies
+        run: npm ci
+
+      - name: 🔨 Build Electron app
+        run: npm run build
+
+      - name: 🚀 Build Windows installer (.exe)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          npx electron-builder --win --publish always
+
+      - name: 📤 Upload Windows artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-installer
+          path: release/*.exe
+          if-no-files-found: warn
+
+  build_macos:
+    name: 🍎 Build macOS (.dmg)
+    runs-on: macos-latest
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 🟢 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: 📦 Install dependencies
+        run: npm ci
+
+      - name: 🔨 Build Electron app
+        run: npm run build
+
+      - name: 🚀 Build macOS installer (.dmg)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: |
+          npx electron-builder --mac --publish always
+
+      - name: 📤 Upload macOS artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-installer
+          path: release/*.dmg
+          if-no-files-found: warn 
