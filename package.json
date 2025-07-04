@@ -1,6 +1,9 @@
 {
   "name": "contacts-monorepo",
   "private": true,
+  "workspaces": [
+    "apps/*"
+  ],
   "packageManager": "pnpm@10.11.0",
   "scripts": {
     "dev": "concurrently \"npm run dev --workspace=web\" \"npm run dev --workspace=api\"",
