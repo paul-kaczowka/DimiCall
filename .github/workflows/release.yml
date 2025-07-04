@@ -1,0 +1,44 @@
+name: Publish DimiCall Release
+
+# Se déclenche manuellement depuis l'onglet Actions de GitHub
+on:
+  workflow_dispatch:
+
+jobs:
+  publish-electron-app:
+    # Utilise une matrice pour lancer les builds sur Windows et macOS en parallèle
+    strategy:
+      matrix:
+        os: [macos-latest, windows-latest]
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: 1. Cloner le dépôt
+        uses: actions/checkout@v4
+
+      - name: 2. Configurer Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: 3. Installer les dépendances
+        run: npm ci
+
+      - name: 4. Construire et publier l'application
+        run: npm run publish
+        env:
+          # Le jeton pour publier sur GitHub Releases
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+
+          # === Secrets pour la SIGNATURE ===
+          # Ces variables sont lues par electron-builder pour signer l'application
+          
+          # --- macOS ---
+          CSC_LINK: ${{ secrets.MAC_CERT_P12_B64 }}
+          CSC_KEY_PASSWORD: ${{ secrets.MAC_CERT_PASSWORD }}
+
+          # --- Windows ---
+          WIN_CSC_LINK: ${{ secrets.WIN_CERT_P12_B64 }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CERT_PASSWORD }} 
